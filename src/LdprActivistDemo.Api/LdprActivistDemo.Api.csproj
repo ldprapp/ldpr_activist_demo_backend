@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LdprActivistDemo.Application\LdprActivistDemo.Application.csproj" />
+    <ProjectReference Include="..\LdprActivistDemo.Contracts\LdprActivistDemo.Contracts.csproj" />
+    <ProjectReference Include="..\LdprActivistDemo.Migrations\LdprActivistDemo.Migrations.csproj" />
+    <ProjectReference Include="..\LdprActivistDemo.Persistence\LdprActivistDemo.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

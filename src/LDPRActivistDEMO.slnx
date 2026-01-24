@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="LdprActivistDemo.Api/LdprActivistDemo.Api.csproj" Id="c40e67c6-dfe8-4b9e-9604-97a89c4cacfc" />
+  <Project Path="LdprActivistDemo.Application/LdprActivistDemo.Application.csproj" Id="ba7663f7-5571-4c37-b2d2-157eb6663222" />
+  <Project Path="LdprActivistDemo.Contracts/LdprActivistDemo.Contracts.csproj" Id="66450313-705e-459a-aee9-8111bd30f704" />
+  <Project Path="LdprActivistDemo.Migrations/LdprActivistDemo.Migrations.csproj" Id="367c5d3a-0835-475b-85fb-44bacd23e8b9" />
+  <Project Path="LdprActivistDemo.Persistence/LdprActivistDemo.Persistence.csproj" Id="34e0e17f-d3f6-4b14-aa7c-5ab7f6e2cbb0" />
+</Solution>

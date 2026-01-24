@@ -9,7 +9,21 @@
 *.user
 *.userosscache
 *.sln.docstates
-*.env
+
+# Local docker-compose overrides (absolute paths, local ports, secrets)
+**/docker-compose.override.local.yml
+**/docker-compose.override.*.local.yml
+**/docker-compose.override.private.yml
+**/docker-compose.override.*.private.yml
+
+# Local appsettings overlays (secrets should be in User Secrets / ProgramData)
+**/appsettings.local.json
+**/appsettings.*.local.json
+**/appsettings.secrets.json
+**/appsettings.*.secrets.json
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+**/appsettings.Development.json
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -253,6 +267,12 @@ ClientBin/
 *.dbproj.schemaview
 *.jfm
 *.pfx
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.jks
 *.publishsettings
 orleans.codegen.cs
 

@@ -1,0 +1,69 @@
+name: ldpr_activist_demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT_PUBLIC}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT_PUBLIC}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ../..
+      dockerfile: build/docker/Dockerfile
+      args:
+        DOTNET_VERSION: ${DOTNET_VERSION}
+        APP_PROJECT: ${APP_PROJECT}
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+
+      # .NET configuration via env vars
+      ConnectionStrings__Postgres: ${POSTGRES_CONNECTION_STRING_DOCKER}
+      ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING_DOCKER}
+
+      Otp__TtlSeconds: ${OTP_TTL_SECONDS}
+      Otp__Length: ${OTP_LENGTH}
+
+      Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE}
+
+      # entrypoint target
+      APP_DLL: ${APP_DLL}
+
+    ports:
+      - "${API_PORT}:8080"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
