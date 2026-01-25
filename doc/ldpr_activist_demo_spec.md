@@ -1,7 +1,7 @@
 # ldpr_activist_demo — спецификация демо-бэкенда (готово для разработки)
 
 Данный документ фиксирует требования к демо-проекту **ldpr_activist_demo**: хранение пользователей (Identity/User Storage), справочники регионов/городов, задания и подтверждения выполнения заданий.  
-В документе используется ограждение блоков кода **тройными тильдами** `~~~` (а не тройными обратными кавычками), чтобы не ломать Markdown при вложенных примерах и генерации. citeturn0search6turn0search8turn0search10
+В документе используется ограждение блоков кода **тройными тильдами** `~~~` (а не тройными обратными кавычками), чтобы не ломать Markdown при вложенных примерах и генерации. 
 
 ---
 
@@ -18,11 +18,13 @@
 - JWT/токены **не используются**.
 - Для административных/чувствительных операций клиент передаёт:
   - `ActorUserId: Guid`
-  - `ActorPasswordHash: string`
+  - `ActorPassword: string`
 - Сервер делает проверки:
   1) пользователь существует;
-  2) `PasswordHash` совпадает;
+  2) сохранённый `PasswordHash` совпадает (после проверки через хэшер паролей);
   3) проверка прав: админ / создатель задания / доверенное лицо.
+
+**Важно про пароль:** во всех запросах пароль передаётся **обычной строкой** (не хэш). Сервер сам вычисляет и проверяет хэш (в БД хранится только `PasswordHash`), а передача должна происходить по HTTPS/TLS.
 
 > Это демо-логика. В проде будет заменено на нормальную аутентификацию/авторизацию.
 
@@ -199,9 +201,9 @@ PK:
 ## 6) Правила доступа (демо)
 
 ### 6.1. Проверка “актор — админ”
-Выполняется по `ActorUserId + ActorPasswordHash`:
+Выполняется по `ActorUserId + ActorPassword`:
 1) найти пользователя `users.Id == ActorUserId`
-2) сравнить `PasswordHash`
+2) проверить пароль: вычислить хэш/верифицировать через хэшер и сравнить с сохранённым `PasswordHash`
 3) `IsAdmin == true`
 
 ### 6.2. Проверка “создатель или доверенное лицо”
@@ -221,7 +223,8 @@ PK:
 Коды ответов (рекомендуемые):
 - `200 OK`, `201 Created`, `204 No Content`
 - `400 Bad Request`
-- `403 Forbidden` — неверный пароль / нет прав
+- `401 Unauthorized` — неверные учётные данные (пароль)
+- `403 Forbidden` — нет прав
 - `404 Not Found`
 - `409 Conflict` — конфликт уникальности (например телефон)
 
@@ -252,6 +255,73 @@ PK:
 
 ---
 
+### 8.3. Добавить регион (только админ)
+
+`POST /api/v1/regions`
+
+Создаёт новый регион. Доступно только администратору (см. **0.1**).
+
+**Request Body:**
+
+~~~json
+{
+  "actorUserId": "00000000-0000-0000-0000-000000000000",
+  "actorPassword": "plain_password",
+  "name": "Воронежская область"
+}
+~~~
+
+**201 Created** + `Location: /api/v1/regions/{id}`
+
+~~~json
+{
+  "id": 123
+}
+~~~
+
+**Ошибки:**
+
+* `400 Bad Request` — некорректное имя (`name` пустое/пробелы).
+* `401 Unauthorized` — неверные учётные данные или пользователь не админ.
+* `409 Conflict` — регион с таким названием уже существует.
+
+---
+
+### 8.4. Добавить город в регион (только админ)
+
+`POST /api/v1/regions/{regionId}/cities`
+
+Создаёт новый город в указанном регионе. Доступно только администратору (см. **0.1**).
+
+**Path Params:**
+
+* `regionId: int` — идентификатор региона.
+
+**Request Body:**
+
+~~~json
+{
+  "actorUserId": "00000000-0000-0000-0000-000000000000",
+  "actorPassword": "plain_password",
+  "name": "Нововоронеж"
+}
+~~~
+
+**201 Created** + `Location: /api/v1/regions/{regionId}/cities/{id}`
+
+~~~json
+{
+  "id": 456
+}
+~~~
+
+**Ошибки:**
+
+* `400 Bad Request` — некорректное имя (`name` пустое/пробелы).
+* `401 Unauthorized` — неверные учётные данные или пользователь не админ.
+* `404 Not Found` — регион не найден.
+* `409 Conflict` — город с таким названием уже существует в регионе.
+
 ## 9) API — пользователи
 
 ### 9.1. Регистрация
@@ -265,7 +335,7 @@ PK:
   "middleName": "Иванович",
   "gender": "male",
   "phoneNumber": "+79990001122",
-  "passwordHash": "HASH",
+  "password": "plain_password",
   "birthDate": "2000-01-01",
   "regionId": 1,
   "cityId": 11
@@ -307,7 +377,7 @@ PK:
 
 Запрос:
 ~~~json
-{ "phoneNumber": "+79990001122", "passwordHash": "HASH" }
+{ "phoneNumber": "+79990001122", "password": "plain_password" }
 ~~~
 
 Ответ `200`:
@@ -322,7 +392,7 @@ PK:
 ### 9.4. Получить пользователя по телефону (публично)
 - `GET /api/v1/users/by-phone/{phoneNumber}`
 
-Ответ `200` (без `passwordHash`, без `isAdmin`):
+Ответ `200` (без `password`, без `isAdmin`):
 ~~~json
 {
   "id": "00000000-0000-0000-0000-000000000000",
@@ -348,7 +418,7 @@ PK:
 
 Запрос:
 ~~~json
-{ "oldPasswordHash": "OLD", "newPasswordHash": "NEW" }
+{ "oldPassword": "OLD", "newPassword": "NEW" }
 ~~~
 
 Ответ: `204`
@@ -359,7 +429,7 @@ PK:
 Запрос (включая пароль владельца):
 ~~~json
 {
-  "passwordHash": "HASH",
+  "password": "plain_password",
   "lastName": "Иванов",
   "firstName": "Иван",
   "middleName": "Иванович",
@@ -378,7 +448,7 @@ PK:
 
 Запрос:
 ~~~json
-{ "passwordHash": "HASH", "newPhoneNumber": "+79990001123" }
+{ "password": "plain_password", "newPhoneNumber": "+79990001123" }
 ~~~
 
 Действие:
@@ -438,7 +508,7 @@ PK:
 ~~~json
 {
   "actorUserId": "00000000-0000-0000-0000-000000000001",
-  "actorPasswordHash": "HASH",
+  "actorPassword": "plain_password",
 
   "title": "Название",
   "description": "Описание",
@@ -484,7 +554,7 @@ PK:
 
 Запрос:
 ~~~json
-{ "actorUserId": "00000000-0000-0000-0000-000000000001", "actorPasswordHash": "HASH" }
+{ "actorUserId": "00000000-0000-0000-0000-000000000001", "actorPassword": "plain_password" }
 ~~~
 
 Ответ: `204`
@@ -494,14 +564,14 @@ PK:
 
 Запрос:
 ~~~json
-{ "actorUserId": "00000000-0000-0000-0000-000000000001", "actorPasswordHash": "HASH" }
+{ "actorUserId": "00000000-0000-0000-0000-000000000001", "actorPassword": "plain_password" }
 ~~~
 
 Действие: установить `Status = Closed`.  
 Ответ: `204`
 
 ### 10.5. Получить полную модель задания (только админ)
-- `GET /api/v1/tasks/{taskId}?actorUserId=...&actorPasswordHash=...`
+- `GET /api/v1/tasks/{taskId}?actorUserId=...&actorPassword=...`
 
 Ответ `200`:
 ~~~json
@@ -536,7 +606,7 @@ PK:
 ~~~json
 {
   "userId": "00000000-0000-0000-0000-00000000BBBB",
-  "passwordHash": "HASH",
+  "password": "plain_password",
   "photos": [
     "https://example.com/p1.jpg",
     "https://example.com/p2.jpg"
@@ -546,14 +616,14 @@ PK:
 ~~~
 
 Действие:
-- проверить пользователя по `userId + passwordHash`
+- проверить пользователя по `userId + password` (верифицировать пароль через хэшер)
 - проверить, что задание существует и не закрыто
 - создать или обновить submission (по `UNIQUE (taskId, userId)`)
 
 Ответ: `200` или `201`
 
 ### 11.2. Список сдавших на проверку (создатель или доверенное лицо)
-- `GET /api/v1/tasks/{taskId}/submitted?actorUserId=...&actorPasswordHash=...`
+- `GET /api/v1/tasks/{taskId}/submitted?actorUserId=...&actorPassword=...`
 
 Ответ `200`:
 ~~~json
@@ -568,7 +638,7 @@ PK:
 ~~~
 
 ### 11.3. Список подтверждённых (создатель или доверенное лицо)
-- `GET /api/v1/tasks/{taskId}/approved?actorUserId=...&actorPasswordHash=...`
+- `GET /api/v1/tasks/{taskId}/approved?actorUserId=...&actorPassword=...`
 
 Ответ `200`:
 ~~~json
@@ -583,7 +653,7 @@ PK:
 ~~~
 
 ### 11.4. Получить пользователя из submitted + submission
-- `GET /api/v1/tasks/{taskId}/submitted/{userId}?actorUserId=...&actorPasswordHash=...`
+- `GET /api/v1/tasks/{taskId}/submitted/{userId}?actorUserId=...&actorPassword=...`
 
 Ответ `200`:
 ~~~json
@@ -623,7 +693,7 @@ PK:
 ~~~json
 {
   "actorUserId": "00000000-0000-0000-0000-000000000001",
-  "actorPasswordHash": "HASH",
+  "actorPassword": "plain_password",
   "userId": "00000000-0000-0000-0000-00000000BBBB"
 }
 ~~~

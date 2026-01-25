@@ -15,11 +15,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	private readonly AppDbContext _db;
 	private readonly IUserRepository _users;
+	private readonly IPasswordHasher _passwordHasher;
 
-	public TaskSubmissionRepository(AppDbContext db, IUserRepository users)
+	public TaskSubmissionRepository(AppDbContext db, IUserRepository users, IPasswordHasher passwordHasher)
 	{
 		_db = db;
 		_users = users;
+		_passwordHasher = passwordHasher;
 	}
 
 	public async Task<bool> SubmitAsync(TaskSubmissionCreateModel model, CancellationToken cancellationToken)
@@ -139,7 +141,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !actor.IsAdmin || !StringComparer.Ordinal.Equals(actor.PasswordHash, actorPasswordHash))
+		if(actor is null || !actor.IsAdmin || !_passwordHasher.Verify(actor.PasswordHash, actorPasswordHash))
 		{
 			return false;
 		}
@@ -184,7 +186,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 	private async Task<bool> HasCreatorOrTrustedAccessAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !StringComparer.Ordinal.Equals(actor.PasswordHash, actorPasswordHash))
+		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorPasswordHash))
 		{
 			return false;
 		}

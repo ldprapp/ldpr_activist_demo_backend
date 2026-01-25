@@ -16,12 +16,18 @@ builder.Services.AddPersistence(builder.Configuration);
 
 var app = builder.Build();
 
-var autoMigrate = builder.Configuration.GetValue<bool>("Database:AutoMigrate");
-if(autoMigrate)
+await using(var scope = app.Services.CreateAsyncScope())
 {
-	using var scope = app.Services.CreateScope();
 	var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-	await db.Database.MigrateAsync();
+	var autoMigrate = builder.Configuration.GetValue<bool>("Database:AutoMigrate");
+
+	if(autoMigrate)
+	{
+		await db.Database.MigrateAsync(app.Lifetime.ApplicationStopping);
+	}
+
+	var geoSeeder = scope.ServiceProvider.GetRequiredService<GeoDbSeeder>();
+	await geoSeeder.SeedAsync(app.Lifetime.ApplicationStopping);
 }
 
 app.UseSwagger();

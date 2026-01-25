@@ -8,10 +8,12 @@ namespace LdprActivistDemo.Persistence;
 public sealed class UserRepository : IUserRepository
 {
 	private readonly AppDbContext _db;
+	private readonly IPasswordHasher _passwordHasher;
 
-	public UserRepository(AppDbContext db)
+	public UserRepository(AppDbContext db, IPasswordHasher passwordHasher)
 	{
 		_db = db;
+		_passwordHasher = passwordHasher;
 	}
 
 	public async Task<UserInternalModel?> GetInternalByIdAsync(Guid userId, CancellationToken cancellationToken)
@@ -60,7 +62,7 @@ public sealed class UserRepository : IUserRepository
 			MiddleName = model.MiddleName,
 			Gender = model.Gender,
 			PhoneNumber = model.PhoneNumber,
-			PasswordHash = model.PasswordHash,
+			PasswordHash = _passwordHasher.Hash(model.PasswordHash),
 			BirthDate = model.BirthDate,
 			RegionId = model.RegionId,
 			CityId = model.CityId,
@@ -82,7 +84,7 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		return StringComparer.Ordinal.Equals(u.PasswordHash, passwordHash);
+		return _passwordHasher.Verify(u.PasswordHash, passwordHash);
 	}
 
 	public async Task<bool> ValidatePasswordAsync(Guid userId, string passwordHash, CancellationToken cancellationToken)
@@ -93,7 +95,7 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		return StringComparer.Ordinal.Equals(u.PasswordHash, passwordHash);
+		return _passwordHasher.Verify(u.PasswordHash, passwordHash);
 	}
 
 	public async Task<bool> SetPhoneConfirmedAsync(string phoneNumber, bool isConfirmed, CancellationToken cancellationToken)
@@ -117,12 +119,12 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		if(!StringComparer.Ordinal.Equals(u.PasswordHash, oldPasswordHash))
+		if(!_passwordHasher.Verify(u.PasswordHash, oldPasswordHash))
 		{
 			return false;
 		}
 
-		u.PasswordHash = newPasswordHash;
+		u.PasswordHash = _passwordHasher.Hash(newPasswordHash);
 		await _db.SaveChangesAsync(cancellationToken);
 		return true;
 	}
@@ -131,6 +133,11 @@ public sealed class UserRepository : IUserRepository
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == model.UserId, cancellationToken);
 		if(u is null)
+		{
+			return false;
+		}
+
+		if(!_passwordHasher.Verify(u.PasswordHash, model.PasswordHash))
 		{
 			return false;
 		}
@@ -145,7 +152,6 @@ public sealed class UserRepository : IUserRepository
 		u.FirstName = model.FirstName;
 		u.MiddleName = model.MiddleName;
 		u.Gender = model.Gender;
-		u.PasswordHash = model.PasswordHash;
 		u.BirthDate = model.BirthDate;
 		u.RegionId = model.RegionId;
 		u.CityId = model.CityId;
@@ -162,7 +168,7 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		if(!StringComparer.Ordinal.Equals(u.PasswordHash, passwordHash))
+		if(!_passwordHasher.Verify(u.PasswordHash, passwordHash))
 		{
 			return false;
 		}

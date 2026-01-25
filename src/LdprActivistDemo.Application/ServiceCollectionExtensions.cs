@@ -14,6 +14,8 @@ public static class ServiceCollectionExtensions
 		services.AddSingleton<IOtpCodeGenerator, OtpCodeGenerator>();
 		services.AddScoped<IOtpService, OtpService>();
 
+		services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
+
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<ITaskService, TaskService>();

@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
+using LdprActivistDemo.Application.Users;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -10,16 +11,18 @@ namespace LdprActivistDemo.Persistence;
 public sealed class TaskRepository : ITaskRepository
 {
 	private readonly AppDbContext _db;
+	private readonly IPasswordHasher _passwordHasher;
 
-	public TaskRepository(AppDbContext db)
+	public TaskRepository(AppDbContext db, IPasswordHasher passwordHasher)
 	{
 		_db = db;
+		_passwordHasher = passwordHasher;
 	}
 
 	public async Task<Guid> CreateAsync(TaskCreateModel model, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == model.ActorUserId, cancellationToken);
-		if(actor is null || !actor.IsAdmin || !StringComparer.Ordinal.Equals(actor.PasswordHash, model.ActorPasswordHash))
+		if(actor is null || !actor.IsAdmin || !_passwordHasher.Verify(actor.PasswordHash, model.ActorPasswordHash))
 		{
 			throw new InvalidOperationException("Actor is not an admin or invalid credentials.");
 		}
@@ -66,7 +69,7 @@ public sealed class TaskRepository : ITaskRepository
 	public async Task<bool> UpdateAsync(TaskUpdateModel model, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == model.ActorUserId, cancellationToken);
-		if(actor is null || !StringComparer.Ordinal.Equals(actor.PasswordHash, model.ActorPasswordHash))
+		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, model.ActorPasswordHash))
 		{
 			return false;
 		}
@@ -114,7 +117,7 @@ public sealed class TaskRepository : ITaskRepository
 	public async Task<bool> DeleteAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !StringComparer.Ordinal.Equals(actor.PasswordHash, actorPasswordHash))
+		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorPasswordHash))
 		{
 			return false;
 		}
@@ -138,7 +141,7 @@ public sealed class TaskRepository : ITaskRepository
 	public async Task<bool> CloseAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !StringComparer.Ordinal.Equals(actor.PasswordHash, actorPasswordHash))
+		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorPasswordHash))
 		{
 			return false;
 		}
