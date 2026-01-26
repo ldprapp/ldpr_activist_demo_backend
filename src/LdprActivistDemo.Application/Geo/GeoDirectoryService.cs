@@ -23,10 +23,12 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 		=> _cities.GetByRegionAsync(regionId, cancellationToken);
 
 	public async Task<GeoMutationResult<RegionModel>> CreateRegionAsync(
+		Guid actorUserId,
+		string actorPassword,
 		RegionCreateModel model,
 		CancellationToken cancellationToken)
 	{
-		var hasAccess = await HasAdminAccessAsync(model.ActorUserId, model.ActorPasswordHash, cancellationToken);
+		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
 		if(!hasAccess)
 		{
 			return GeoMutationResult<RegionModel>.Fail(GeoMutationError.Unauthorized);
@@ -48,10 +50,12 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 	}
 
 	public async Task<GeoMutationResult<CityModel>> CreateCityAsync(
+		Guid actorUserId,
+		string actorPassword,
 		CityCreateModel model,
 		CancellationToken cancellationToken)
 	{
-		var hasAccess = await HasAdminAccessAsync(model.ActorUserId, model.ActorPasswordHash, cancellationToken);
+		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
 		if(!hasAccess)
 		{
 			return GeoMutationResult<CityModel>.Fail(GeoMutationError.Unauthorized);
@@ -78,9 +82,10 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 		return GeoMutationResult<CityModel>.Ok(created);
 	}
 
-	private async Task<bool> HasAdminAccessAsync(Guid actorUserId, string actorPasswordHash, CancellationToken cancellationToken)
+	private async Task<bool> HasAdminAccessAsync(Guid actorUserId, string actorPassword, CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorPasswordHash, cancellationToken);
+		var ok = await _users.ValidatePasswordAsync(actorUserId, actorPassword, cancellationToken);
+
 		if(!ok)
 		{
 			return false;

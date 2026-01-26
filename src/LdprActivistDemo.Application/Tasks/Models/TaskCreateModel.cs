@@ -3,16 +3,14 @@
 namespace LdprActivistDemo.Application.Tasks.Models;
 
 public sealed record TaskCreateModel(
-	Guid ActorUserId,
-	string ActorPasswordHash,
 	string Title,
 	string Description,
-	string RequirementsText,
+	string? RequirementsText,
 	int RewardPoints,
 	string? CoverImageUrl,
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
-	DateTimeOffset DeadlineAt,
+	DateTimeOffset? DeadlineAt,
 	TaskStatus Status,
 	int RegionId,
 	int? CityId,

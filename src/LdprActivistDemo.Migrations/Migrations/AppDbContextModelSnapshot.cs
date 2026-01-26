@@ -237,6 +237,8 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.ToTable("users", null, t =>
                         {
+                            t.HasCheckConstraint("ck_users_gender_allowed", "\"Gender\" IS NULL OR \"Gender\" IN ('male','female')");
+
                             t.HasCheckConstraint("ck_users_points_non_negative", "\"Points\" >= 0");
                         });
                 });

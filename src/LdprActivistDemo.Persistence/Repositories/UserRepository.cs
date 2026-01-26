@@ -42,6 +42,8 @@ public sealed class UserRepository : IUserRepository
 
 	public async Task<Guid> CreateAsync(UserCreateModel model, CancellationToken cancellationToken)
 	{
+		var gender = NormalizeGenderOrThrow(model.Gender);
+
 		var city = await _db.Cities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == model.CityId, cancellationToken);
 		if(city is null || city.RegionId != model.RegionId)
 		{
@@ -60,9 +62,9 @@ public sealed class UserRepository : IUserRepository
 			LastName = model.LastName,
 			FirstName = model.FirstName,
 			MiddleName = model.MiddleName,
-			Gender = model.Gender,
+			Gender = gender,
 			PhoneNumber = model.PhoneNumber,
-			PasswordHash = _passwordHasher.Hash(model.PasswordHash),
+			PasswordHash = _passwordHasher.Hash(model.Password),
 			BirthDate = model.BirthDate,
 			RegionId = model.RegionId,
 			CityId = model.CityId,
@@ -76,7 +78,7 @@ public sealed class UserRepository : IUserRepository
 		return entity.Id;
 	}
 
-	public async Task<bool> ValidatePasswordAsync(string phoneNumber, string passwordHash, CancellationToken cancellationToken)
+	public async Task<bool> ValidatePasswordAsync(string phoneNumber, string password, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
 		if(u is null)
@@ -84,10 +86,10 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		return _passwordHasher.Verify(u.PasswordHash, passwordHash);
+		return _passwordHasher.Verify(u.PasswordHash, password);
 	}
 
-	public async Task<bool> ValidatePasswordAsync(Guid userId, string passwordHash, CancellationToken cancellationToken)
+	public async Task<bool> ValidatePasswordAsync(Guid userId, string password, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		if(u is null)
@@ -95,7 +97,7 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		return _passwordHasher.Verify(u.PasswordHash, passwordHash);
+		return _passwordHasher.Verify(u.PasswordHash, password);
 	}
 
 	public async Task<bool> SetPhoneConfirmedAsync(string phoneNumber, bool isConfirmed, CancellationToken cancellationToken)
@@ -111,7 +113,7 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<bool> ChangePasswordAsync(Guid userId, string oldPasswordHash, string newPasswordHash, CancellationToken cancellationToken)
+	public async Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		if(u is null)
@@ -119,17 +121,17 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		if(!_passwordHasher.Verify(u.PasswordHash, oldPasswordHash))
+		if(!_passwordHasher.Verify(u.PasswordHash, oldPassword))
 		{
 			return false;
 		}
 
-		u.PasswordHash = _passwordHasher.Hash(newPasswordHash);
+		u.PasswordHash = _passwordHasher.Hash(newPassword);
 		await _db.SaveChangesAsync(cancellationToken);
 		return true;
 	}
 
-	public async Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken)
+	public async Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == model.UserId, cancellationToken);
 		if(u is null)
@@ -137,7 +139,7 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		if(!_passwordHasher.Verify(u.PasswordHash, model.PasswordHash))
+		if(!_passwordHasher.Verify(u.PasswordHash, actorPassword))
 		{
 			return false;
 		}
@@ -151,7 +153,7 @@ public sealed class UserRepository : IUserRepository
 		u.LastName = model.LastName;
 		u.FirstName = model.FirstName;
 		u.MiddleName = model.MiddleName;
-		u.Gender = model.Gender;
+		u.Gender = NormalizeGenderOrThrow(model.Gender);
 		u.BirthDate = model.BirthDate;
 		u.RegionId = model.RegionId;
 		u.CityId = model.CityId;
@@ -160,7 +162,7 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<bool> ChangePhoneAsync(Guid userId, string passwordHash, string newPhoneNumber, CancellationToken cancellationToken)
+	public async Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		if(u is null)
@@ -168,7 +170,7 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		if(!_passwordHasher.Verify(u.PasswordHash, passwordHash))
+		if(!_passwordHasher.Verify(u.PasswordHash, password))
 		{
 			return false;
 		}
@@ -203,6 +205,15 @@ public sealed class UserRepository : IUserRepository
 			.ToListAsync(cancellationToken);
 	}
 
+	public async Task<IReadOnlyList<UserFullNameModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
+	{
+		return await _db.Users.AsNoTracking()
+			.Where(x => x.RegionId == regionId && x.CityId == cityId)
+			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
+			.Select(x => new UserFullNameModel(x.Id, x.LastName, x.FirstName, x.MiddleName))
+			.ToListAsync(cancellationToken);
+	}
+
 	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken)
 		=> _db.Users.AsNoTracking().AnyAsync(x => x.Id == userId && x.IsAdmin, cancellationToken);
 
@@ -230,6 +241,24 @@ public sealed class UserRepository : IUserRepository
 		u.Points += pointsToAdd;
 		await _db.SaveChangesAsync(cancellationToken);
 		return true;
+	}
+
+	private static string? NormalizeGenderOrThrow(string? value)
+	{
+		var token = (value ?? string.Empty).Trim();
+		if(string.IsNullOrWhiteSpace(token))
+		{
+			return null;
+		}
+
+		token = token.ToLowerInvariant();
+
+		return token switch
+		{
+			"m" or "male" or "man" or "м" or "муж" or "мужчина" => "male",
+			"f" or "female" or "woman" or "ж" or "жен" or "женщина" => "female",
+			_ => throw new InvalidOperationException("Gender is invalid."),
+		};
 	}
 
 	private static UserInternalModel ToInternal(User u)

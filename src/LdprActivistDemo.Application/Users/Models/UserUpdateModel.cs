@@ -6,7 +6,6 @@ public sealed record UserUpdateModel(
 	string FirstName,
 	string? MiddleName,
 	string? Gender,
-	string PasswordHash,
 	DateOnly BirthDate,
 	int RegionId,
 	int CityId);

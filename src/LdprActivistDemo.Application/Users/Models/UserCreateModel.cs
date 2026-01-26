@@ -6,7 +6,7 @@ public sealed record UserCreateModel(
 	string? MiddleName,
 	string? Gender,
 	string PhoneNumber,
-	string PasswordHash,
+	string Password,
 	DateOnly BirthDate,
 	int RegionId,
 	int CityId);

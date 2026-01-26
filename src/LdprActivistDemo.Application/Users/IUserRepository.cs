@@ -12,16 +12,17 @@ public interface IUserRepository
 
 	Task<Guid> CreateAsync(UserCreateModel model, CancellationToken cancellationToken);
 
-	Task<bool> ValidatePasswordAsync(string phoneNumber, string passwordHash, CancellationToken cancellationToken);
-	Task<bool> ValidatePasswordAsync(Guid userId, string passwordHash, CancellationToken cancellationToken);
+	Task<bool> ValidatePasswordAsync(string phoneNumber, string password, CancellationToken cancellationToken);
+	Task<bool> ValidatePasswordAsync(Guid userId, string password, CancellationToken cancellationToken);
 
 	Task<bool> SetPhoneConfirmedAsync(string phoneNumber, bool isConfirmed, CancellationToken cancellationToken);
-	Task<bool> ChangePasswordAsync(Guid userId, string oldPasswordHash, string newPasswordHash, CancellationToken cancellationToken);
-	Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken);
-	Task<bool> ChangePhoneAsync(Guid userId, string passwordHash, string newPhoneNumber, CancellationToken cancellationToken);
+	Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken);
+	Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken);
+	Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken);
 
 	Task<IReadOnlyList<UserFullNameModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserFullNameModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserFullNameModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken);
 
 	Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<Guid>> GetAllAdminIdsAsync(CancellationToken cancellationToken);

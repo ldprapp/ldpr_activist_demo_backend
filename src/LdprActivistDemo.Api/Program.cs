@@ -1,12 +1,20 @@
+using LdprActivistDemo.Api.Middleware;
 using LdprActivistDemo.Application;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Persistence;
 
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+	.AddJsonOptions(o =>
+	{
+		o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+	});
+
+builder.Services.Configure<ApiBehaviorOptions>(o => o.SuppressModelStateInvalidFilter = true);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -29,6 +37,10 @@ await using(var scope = app.Services.CreateAsyncScope())
 	var geoSeeder = scope.ServiceProvider.GetRequiredService<GeoDbSeeder>();
 	await geoSeeder.SeedAsync(app.Lifetime.ApplicationStopping);
 }
+
+app.UseMiddleware<ApiExceptionHandlingMiddleware>();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI();

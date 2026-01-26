@@ -14,36 +14,64 @@ public sealed class TaskService : ITaskService
 		_submissions = submissions;
 	}
 
-	public Task<Guid> CreateAsync(TaskCreateModel model, CancellationToken cancellationToken)
-		=> _tasks.CreateAsync(model, cancellationToken);
+	public Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
+		=> _tasks.CreateAsync(actorUserId, actorUserPassword, model, cancellationToken);
 
-	public Task<bool> UpdateAsync(TaskUpdateModel model, CancellationToken cancellationToken)
-		=> _tasks.UpdateAsync(model, cancellationToken);
+	public Task<TaskOperationResult> UpdateAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid taskId,
+		TaskUpdateModel model,
+		CancellationToken cancellationToken)
+		=> _tasks.UpdateAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
 
-	public Task<bool> DeleteAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.DeleteAsync(actorUserId, actorPasswordHash, taskId, cancellationToken);
+	public Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _tasks.DeleteAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 
-	public Task<bool> CloseAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.CloseAsync(actorUserId, actorPasswordHash, taskId, cancellationToken);
+	public Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _tasks.CloseAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 
-	public Task<TaskModel?> GetAsync(Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.GetAsync(taskId, cancellationToken);
+	public Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _tasks.GetAdminAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+
+	public Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken)
+		=> _tasks.GetPublicAsync(taskId, cancellationToken);
 
 	public Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
 		=> _tasks.GetByRegionAndCityAsync(regionId, cityId, cancellationToken);
 
-	public Task<bool> SubmitAsync(TaskSubmissionCreateModel model, CancellationToken cancellationToken)
-		=> _submissions.SubmitAsync(model, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken)
+		=> _tasks.GetByRegionAsync(regionId, cancellationToken);
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetSubmittedUsersAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
-		=> _submissions.GetSubmittedUsersAsync(actorUserId, actorPasswordHash, taskId, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken)
+		=> _tasks.GetByCityAsync(cityId, cancellationToken);
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetApprovedUsersAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, CancellationToken cancellationToken)
-		=> _submissions.GetApprovedUsersAsync(actorUserId, actorPasswordHash, taskId, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByAdminAsync(Guid adminUserId, CancellationToken cancellationToken)
+		=> _tasks.GetByAdminAsync(adminUserId, cancellationToken);
 
-	public Task<SubmissionUserViewModel?> GetSubmittedUserAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, Guid userId, CancellationToken cancellationToken)
-		=> _submissions.GetSubmittedUserAsync(actorUserId, actorPasswordHash, taskId, userId, cancellationToken);
+	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetAvailableForUserAsync(Guid userId, CancellationToken cancellationToken)
+		=> _tasks.GetAvailableForUserAsync(userId, cancellationToken);
 
-	public Task<bool> ApproveAsync(Guid actorUserId, string actorPasswordHash, Guid taskId, Guid userId, CancellationToken cancellationToken)
-		=> _submissions.ApproveAsync(actorUserId, actorPasswordHash, taskId, userId, DateTimeOffset.UtcNow, cancellationToken);
+	public Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+		=> _submissions.SubmitAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
+
+	public Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+		=> _submissions.UpdateSubmissionAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
+
+	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _submissions.GetSubmittedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetApprovedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _submissions.GetApprovedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+
+	public Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
+		=> _submissions.GetSubmittedUserAsync(actorUserId, actorPassword, taskId, userId, cancellationToken);
+
+	public Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
+		=> _submissions.ApproveAsync(actorUserId, actorPassword, taskId, userId, DateTimeOffset.UtcNow, cancellationToken);
+
+	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+		=> _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword, cancellationToken);
+
+	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserApprovedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+		=> _tasks.GetByUserApprovedAsync(actorUserId, actorUserPassword, cancellationToken);
 }

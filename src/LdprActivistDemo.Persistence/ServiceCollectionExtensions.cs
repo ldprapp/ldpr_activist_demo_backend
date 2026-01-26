@@ -29,16 +29,18 @@ public static class ServiceCollectionExtensions
 			services.AddStackExchangeRedisCache(opts => opts.Configuration = redisCs);
 			services.AddSingleton<IOtpStore, RedisOtpStore>();
 		}
+		else
+		{
+			services.AddSingleton<IOtpStore, InMemoryOtpStore>();
+		}
 
 		services.Configure<GeoSeedOptions>(configuration.GetSection("GeoSeed"));
 		services.AddScoped<GeoDbSeeder>();
-
 		services.AddScoped<IRegionRepository, RegionRepository>();
 		services.AddScoped<ICityRepository, CityRepository>();
 		services.AddScoped<IUserRepository, UserRepository>();
 		services.AddScoped<ITaskRepository, TaskRepository>();
 		services.AddScoped<ITaskSubmissionRepository, TaskSubmissionRepository>();
-
 		return services;
 	}
 }

@@ -32,33 +32,59 @@ public sealed class UserService : IUserService
 		return await _users.SetPhoneConfirmedAsync(phoneNumber, true, cancellationToken);
 	}
 
-	public Task<bool> LoginAsync(string phoneNumber, string passwordHash, CancellationToken cancellationToken)
-		=> _users.ValidatePasswordAsync(phoneNumber, passwordHash, cancellationToken);
+	public async Task<LoginResult> LoginAsync(string phoneNumber, string password, CancellationToken cancellationToken)
+	{
+		var passwordOk = await _users.ValidatePasswordAsync(phoneNumber, password, cancellationToken);
 
-	public Task<UserPublicModel?> GetByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
-		=> _users.GetPublicByPhoneAsync(phoneNumber, cancellationToken);
+		if(!passwordOk)
+		{
+			return LoginResult.Fail(LoginError.InvalidCredentials);
+		}
 
-	public Task<UserPublicModel?> GetByIdAsync(Guid userId, CancellationToken cancellationToken)
-		=> _users.GetPublicByIdAsync(userId, cancellationToken);
+		var u = await _users.GetInternalByPhoneAsync(phoneNumber, cancellationToken);
+		if(u is null)
+		{
+			return LoginResult.Fail(LoginError.InvalidCredentials);
+		}
 
-	public Task<bool> ChangePasswordAsync(Guid userId, string oldPasswordHash, string newPasswordHash, CancellationToken cancellationToken)
-		=> _users.ChangePasswordAsync(userId, oldPasswordHash, newPasswordHash, cancellationToken);
+		if(!u.IsPhoneConfirmed)
+		{
+			return LoginResult.Fail(LoginError.PhoneNotConfirmed);
+		}
 
-	public Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken)
-		=> _users.UpdateAsync(model, cancellationToken);
+		return LoginResult.Ok(ToPublic(u));
+	}
 
-	public Task<bool> ChangePhoneAsync(Guid userId, string passwordHash, string newPhoneNumber, CancellationToken cancellationToken)
-		=> _users.ChangePhoneAsync(userId, passwordHash, newPhoneNumber, cancellationToken);
+	public Task<UserPublicModel?> GetByPhoneAsync(string phoneNumber, CancellationToken cancellationToken) =>
+		_users.GetPublicByPhoneAsync(phoneNumber, cancellationToken);
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken)
-		=> _users.GetByRegionAsync(regionId, cancellationToken);
+	public Task<UserPublicModel?> GetByIdAsync(Guid userId, CancellationToken cancellationToken) =>
+		_users.GetPublicByIdAsync(userId, cancellationToken);
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken)
-		=> _users.GetByCityAsync(cityId, cancellationToken);
+	public Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken) =>
+		_users.ChangePasswordAsync(userId, oldPassword, newPassword, cancellationToken);
 
-	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken)
-		=> _users.IsAdminAsync(userId, cancellationToken);
+	public Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken) =>
+		_users.UpdateAsync(model, actorPassword, cancellationToken);
 
-	public Task<IReadOnlyList<Guid>> GetAdminIdsAsync(CancellationToken cancellationToken)
-		=> _users.GetAllAdminIdsAsync(cancellationToken);
+	public Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken) =>
+		_users.ChangePhoneAsync(userId, password, newPhoneNumber, cancellationToken);
+
+	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken) =>
+		_users.GetByRegionAsync(regionId, cancellationToken);
+
+	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken) =>
+		_users.GetByCityAsync(cityId, cancellationToken);
+
+	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken) =>
+		_users.GetByRegionAndCityAsync(regionId, cityId, cancellationToken);
+
+	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken) =>
+		_users.IsAdminAsync(userId, cancellationToken);
+
+	public Task<IReadOnlyList<Guid>> GetAdminIdsAsync(CancellationToken cancellationToken) =>
+		_users.GetAllAdminIdsAsync(cancellationToken);
+
+	private static UserPublicModel ToPublic(UserInternalModel u) =>
+		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.Points);
 }

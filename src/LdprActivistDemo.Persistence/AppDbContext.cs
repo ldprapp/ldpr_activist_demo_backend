@@ -45,7 +45,13 @@ public sealed class AppDbContext : DbContext
 
 		modelBuilder.Entity<User>(b =>
 		{
-			b.ToTable("users", t => t.HasCheckConstraint("ck_users_points_non_negative", "\"Points\" >= 0"));
+			b.ToTable("users", t =>
+			{
+				t.HasCheckConstraint("ck_users_points_non_negative", "\"Points\" >= 0");
+				t.HasCheckConstraint(
+					"ck_users_gender_allowed",
+					"\"Gender\" IS NULL OR \"Gender\" IN ('male','female')");
+			});
 			b.HasKey(x => x.Id);
 
 			b.Property(x => x.LastName).IsRequired();
