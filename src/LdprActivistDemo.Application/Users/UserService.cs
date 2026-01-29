@@ -7,17 +7,29 @@ public sealed class UserService : IUserService
 {
 	private readonly IUserRepository _users;
 	private readonly IOtpService _otp;
+	private readonly IUnconfirmedUserCleanupScheduler _cleanupScheduler;
 
-	public UserService(IUserRepository users, IOtpService otp)
+	public UserService(IUserRepository users, IOtpService otp, IUnconfirmedUserCleanupScheduler cleanupScheduler)
 	{
 		_users = users;
 		_otp = otp;
+		_cleanupScheduler = cleanupScheduler;
 	}
 
 	public async Task<Guid> RegisterAsync(UserCreateModel model, CancellationToken cancellationToken)
 	{
+		var confirmedExists = await _users.ExistsConfirmedByPhoneAsync(model.PhoneNumber, cancellationToken);
+		if(confirmedExists)
+		{
+			throw new InvalidOperationException("PhoneNumber already exists.");
+		}
+
+		await _users.DeleteUnconfirmedByPhoneAsync(model.PhoneNumber, cancellationToken);
+
 		var userId = await _users.CreateAsync(model, cancellationToken);
-		_ = await _otp.IssueAsync(model.PhoneNumber, cancellationToken);
+
+		_cleanupScheduler.Schedule(userId);
+
 		return userId;
 	}
 
@@ -67,8 +79,32 @@ public sealed class UserService : IUserService
 	public Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken) =>
 		_users.UpdateAsync(model, actorPassword, cancellationToken);
 
-	public Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken) =>
-		_users.ChangePhoneAsync(userId, password, newPhoneNumber, cancellationToken);
+	public async Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, string otpCode, CancellationToken cancellationToken)
+	{
+		var otpOk = await _otp.VerifyAsync(newPhoneNumber, otpCode, cancellationToken);
+		if(!otpOk)
+		{
+			return false;
+		}
+
+		var changed = await _users.ChangePhoneAsync(
+			userId,
+			password,
+			newPhoneNumber,
+			cancellationToken);
+
+		if(!changed)
+		{
+			return false;
+		}
+
+		await _users.SetPhoneConfirmedAsync(
+			newPhoneNumber,
+			true,
+			cancellationToken);
+
+		return true;
+	}
 
 	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken) =>
 		_users.GetByRegionAsync(regionId, cancellationToken);

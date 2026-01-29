@@ -117,7 +117,7 @@ public sealed class AppDbContext : DbContext
 			b.HasOne(x => x.AdminUser)
 				.WithMany()
 				.HasForeignKey(x => x.AdminUserId)
-				.OnDelete(DeleteBehavior.Restrict);
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<TaskSubmission>(b =>
@@ -135,12 +135,12 @@ public sealed class AppDbContext : DbContext
 			b.HasOne(x => x.User)
 				.WithMany()
 				.HasForeignKey(x => x.UserId)
-				.OnDelete(DeleteBehavior.Restrict);
+				.OnDelete(DeleteBehavior.Cascade);
 
 			b.HasOne(x => x.ConfirmedByAdmin)
 				.WithMany()
 				.HasForeignKey(x => x.ConfirmedByAdminId)
-				.OnDelete(DeleteBehavior.Restrict);
+				.OnDelete(DeleteBehavior.SetNull);
 		});
 	}
 }

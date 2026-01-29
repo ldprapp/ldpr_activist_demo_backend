@@ -2,6 +2,6 @@
 
 public interface IOtpService
 {
-	Task<string> IssueAsync(string phoneNumber, CancellationToken cancellationToken);
+	Task IssueAsync(string phoneNumber, CancellationToken cancellationToken);
 	Task<bool> VerifyAsync(string phoneNumber, string code, CancellationToken cancellationToken);
 }

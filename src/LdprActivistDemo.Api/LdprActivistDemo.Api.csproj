@@ -23,4 +23,11 @@
     <ProjectReference Include="..\LdprActivistDemo.Persistence\LdprActivistDemo.Persistence.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\version"
+          Link="version"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+	
 </Project>

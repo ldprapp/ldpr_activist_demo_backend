@@ -9,6 +9,9 @@ public static class ApiErrorCodes
 	public const string InvalidCredentials = "invalid_credentials";
 	public const string PhoneNotConfirmed = "phone_not_confirmed";
 	public const string OtpInvalid = "otp_invalid";
+	public const string PhoneAlreadyConfirmed = "phone_already_confirmed";
+	public const string OtpSendFailed = "otp_send_failed";
+	public const string PasswordResetExpired = "password_reset_expired";
 
 	public const string UserNotFound = "user_not_found";
 	public const string PhoneAlreadyExists = "phone_already_exists";

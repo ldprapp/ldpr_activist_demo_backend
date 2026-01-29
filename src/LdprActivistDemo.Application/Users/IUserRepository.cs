@@ -10,6 +10,12 @@ public interface IUserRepository
 	Task<UserPublicModel?> GetPublicByIdAsync(Guid userId, CancellationToken cancellationToken);
 	Task<UserPublicModel?> GetPublicByPhoneAsync(string phoneNumber, CancellationToken cancellationToken);
 
+	Task<bool> ExistsConfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken);
+	Task<bool> DeleteUnconfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken);
+
+	Task<bool> DeleteUnconfirmedByIdAsync(Guid userId, CancellationToken cancellationToken);
+	Task<int> DeleteAllUnconfirmedAsync(CancellationToken cancellationToken);
+
 	Task<Guid> CreateAsync(UserCreateModel model, CancellationToken cancellationToken);
 
 	Task<bool> ValidatePasswordAsync(string phoneNumber, string password, CancellationToken cancellationToken);

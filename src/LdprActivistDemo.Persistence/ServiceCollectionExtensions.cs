@@ -1,6 +1,7 @@
 ﻿using LdprActivistDemo.Application.Geo;
 using LdprActivistDemo.Application.Geo.Seeding;
 using LdprActivistDemo.Application.Otp;
+using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Users;
 
@@ -28,10 +29,12 @@ public static class ServiceCollectionExtensions
 		{
 			services.AddStackExchangeRedisCache(opts => opts.Configuration = redisCs);
 			services.AddSingleton<IOtpStore, RedisOtpStore>();
+			services.AddSingleton<IPasswordResetStore, RedisPasswordResetStore>();
 		}
 		else
 		{
 			services.AddSingleton<IOtpStore, InMemoryOtpStore>();
+			services.AddSingleton<IPasswordResetStore, InMemoryPasswordResetStore>();
 		}
 
 		services.Configure<GeoSeedOptions>(configuration.GetSection("GeoSeed"));
@@ -39,6 +42,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IRegionRepository, RegionRepository>();
 		services.AddScoped<ICityRepository, CityRepository>();
 		services.AddScoped<IUserRepository, UserRepository>();
+		services.AddScoped<IPasswordResetRepository, PasswordResetRepository>();
 		services.AddScoped<ITaskRepository, TaskRepository>();
 		services.AddScoped<ITaskSubmissionRepository, TaskSubmissionRepository>();
 		return services;

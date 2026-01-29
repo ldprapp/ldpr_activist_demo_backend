@@ -40,6 +40,56 @@ public sealed class UserRepository : IUserRepository
 		return u is null ? null : ToPublic(u);
 	}
 
+	public Task<bool> ExistsConfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
+		=> _db.Users.AsNoTracking().AnyAsync(x => x.PhoneNumber == phoneNumber && x.IsPhoneConfirmed, cancellationToken);
+
+	public async Task<bool> DeleteUnconfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
+	{
+		var entities = await _db.Users
+		   .Where(x => x.PhoneNumber == phoneNumber && !x.IsPhoneConfirmed)
+		   .ToListAsync(cancellationToken);
+
+		if(entities.Count == 0)
+		{
+			return false;
+		}
+
+		_db.Users.RemoveRange(entities);
+		await _db.SaveChangesAsync(cancellationToken);
+		return true;
+	}
+
+	public async Task<bool> DeleteUnconfirmedByIdAsync(Guid userId, CancellationToken cancellationToken)
+	{
+		var entity = await _db.Users
+			.FirstOrDefaultAsync(x => x.Id == userId && !x.IsPhoneConfirmed, cancellationToken);
+
+		if(entity is null)
+		{
+			return false;
+		}
+
+		_db.Users.Remove(entity);
+		await _db.SaveChangesAsync(cancellationToken);
+		return true;
+	}
+
+	public async Task<int> DeleteAllUnconfirmedAsync(CancellationToken cancellationToken)
+	{
+		var entities = await _db.Users
+			.Where(x => !x.IsPhoneConfirmed)
+			.ToListAsync(cancellationToken);
+
+		if(entities.Count == 0)
+		{
+			return 0;
+		}
+
+		_db.Users.RemoveRange(entities);
+		await _db.SaveChangesAsync(cancellationToken);
+		return entities.Count;
+	}
+
 	public async Task<Guid> CreateAsync(UserCreateModel model, CancellationToken cancellationToken)
 	{
 		var gender = NormalizeGenderOrThrow(model.Gender);
@@ -50,7 +100,9 @@ public sealed class UserRepository : IUserRepository
 			throw new InvalidOperationException("City does not belong to Region or does not exist.");
 		}
 
-		var exists = await _db.Users.AsNoTracking().AnyAsync(x => x.PhoneNumber == model.PhoneNumber, cancellationToken);
+		var exists = await _db.Users.AsNoTracking()
+			.AnyAsync(x => x.PhoneNumber == model.PhoneNumber && x.IsPhoneConfirmed, cancellationToken);
+
 		if(exists)
 		{
 			throw new InvalidOperationException("PhoneNumber already exists.");

@@ -1,6 +1,9 @@
+using LdprActivistDemo.Api.Health;
 using LdprActivistDemo.Api.Middleware;
 using LdprActivistDemo.Application;
 using LdprActivistDemo.Application.Otp;
+using LdprActivistDemo.Application.PasswordReset;
+using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Persistence;
 
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +21,10 @@ builder.Services.Configure<ApiBehaviorOptions>(o => o.SuppressModelStateInvalidF
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddSingleton<IBackendVersionProvider, BackendVersionProvider>();
+
 builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
+builder.Services.Configure<PasswordResetOptions>(builder.Configuration.GetSection("PasswordReset"));
 builder.Services.AddApplication();
 builder.Services.AddPersistence(builder.Configuration);
 
@@ -36,6 +42,9 @@ await using(var scope = app.Services.CreateAsyncScope())
 
 	var geoSeeder = scope.ServiceProvider.GetRequiredService<GeoDbSeeder>();
 	await geoSeeder.SeedAsync(app.Lifetime.ApplicationStopping);
+
+	var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+	await userRepository.DeleteAllUnconfirmedAsync(app.Lifetime.ApplicationStopping);
 }
 
 app.UseMiddleware<ApiExceptionHandlingMiddleware>();

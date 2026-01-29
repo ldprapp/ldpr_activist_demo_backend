@@ -1,4 +1,6 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Application.Otp;
+using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Contracts.Errors;
@@ -15,10 +17,14 @@ public sealed class UsersController : ControllerBase
 	private const string ActorPasswordHeader = "X-Actor-Password";
 
 	private readonly IUserService _users;
+	private readonly IOtpService _otp;
+	private readonly IPasswordResetService _passwordReset;
 
-	public UsersController(IUserService users)
+	public UsersController(IUserService users, IOtpService otp, IPasswordResetService passwordReset)
 	{
-		_users = users;
+		_users = users ?? throw new ArgumentNullException(nameof(users));
+		_otp = otp ?? throw new ArgumentNullException(nameof(otp));
+		_passwordReset = passwordReset ?? throw new ArgumentNullException(nameof(passwordReset));
 	}
 
 	[HttpPost("register")]
@@ -69,11 +75,234 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
+	[HttpPost("send-otp")]
+	[ProducesResponseType(typeof(SendOtpResponse), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+	public async Task<ActionResult<SendOtpResponse>> SendOtp([FromBody] SendOtpRequest request, CancellationToken cancellationToken)
+	{
+		if(request is null)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["body"] = new[] { "Request body is required." },
+				});
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(string.IsNullOrWhiteSpace(request.PhoneNumber))
+		{
+			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber is required." };
+		}
+		else if(!IsValidPhoneNumber(request.PhoneNumber))
+		{
+			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber has invalid format." };
+		}
+
+		if(errors.Count > 0)
+		{
+			return this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors);
+		}
+
+		var u = await _users.GetByPhoneAsync(request.PhoneNumber, cancellationToken);
+		if(u is not null && u.IsPhoneConfirmed)
+		{
+			return this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.PhoneAlreadyConfirmed,
+				"Телефон уже подтверждён.",
+				"Повторная отправка OTP для уже подтверждённого номера запрещена.");
+		}
+
+		try
+		{
+			await _otp.IssueAsync(request.PhoneNumber, cancellationToken);
+			return Ok(new SendOtpResponse(true));
+		}
+		catch(Exception)
+		{
+			return this.ProblemWithCode(
+				StatusCodes.Status500InternalServerError,
+				ApiErrorCodes.OtpSendFailed,
+				"Не удалось отправить OTP.",
+				"Ошибка отправки OTP (проверьте провайдера доставки/SMS).");
+		}
+	}
+
+	[HttpPost("password-reset/request")]
+	[ProducesResponseType(typeof(RequestPasswordResetResponse), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+	public async Task<ActionResult<RequestPasswordResetResponse>> RequestPasswordReset(
+		[FromBody] RequestPasswordResetRequest request,
+		CancellationToken cancellationToken)
+	{
+		if(request is null)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["body"] = new[] { "Request body is required." },
+				});
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(string.IsNullOrWhiteSpace(request.PhoneNumber))
+		{
+			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber is required." };
+		}
+		else if(!IsValidPhoneNumber(request.PhoneNumber))
+		{
+			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber has invalid format." };
+		}
+
+		if(string.IsNullOrWhiteSpace(request.NewPassword))
+		{
+			errors[nameof(request.NewPassword)] = new[] { "NewPassword is required." };
+		}
+
+		if(errors.Count > 0)
+		{
+			return this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors);
+		}
+
+		var result = await _passwordReset.IssueAsync(request.PhoneNumber, request.NewPassword, cancellationToken);
+
+		if(result.IsSuccess)
+		{
+			return Ok(new RequestPasswordResetResponse(true));
+		}
+
+		return result.Error switch
+		{
+			PasswordResetIssueError.UserNotFound => this.ProblemWithCode(
+				StatusCodes.Status404NotFound,
+				ApiErrorCodes.UserNotFound,
+				"Пользователь не найден.",
+				"Аккаунт с таким номером телефона не существует."),
+
+			PasswordResetIssueError.PhoneNotConfirmed => this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.PhoneNotConfirmed,
+				"Телефон не подтверждён.",
+				"Смена пароля доступна только для подтверждённого номера."),
+
+			PasswordResetIssueError.OtpSendFailed => this.ProblemWithCode(
+				StatusCodes.Status500InternalServerError,
+				ApiErrorCodes.OtpSendFailed,
+				"Не удалось отправить OTP.",
+				"Ошибка отправки OTP (проверьте провайдера доставки/SMS)."),
+
+			_ => this.ProblemWithCode(
+				StatusCodes.Status500InternalServerError,
+				ApiErrorCodes.InternalError,
+				"Внутренняя ошибка."),
+		};
+	}
+
+	[HttpPost("password-reset/confirm")]
+	[ProducesResponseType(typeof(ConfirmPasswordResetResponse), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+	public async Task<ActionResult<ConfirmPasswordResetResponse>> ConfirmPasswordReset(
+		[FromBody] ConfirmPasswordResetRequest request,
+		CancellationToken cancellationToken)
+	{
+		if(request is null)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["body"] = new[] { "Request body is required." },
+				});
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(string.IsNullOrWhiteSpace(request.PhoneNumber))
+		{
+			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber is required." };
+		}
+		else if(!IsValidPhoneNumber(request.PhoneNumber))
+		{
+			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber has invalid format." };
+		}
+
+		if(string.IsNullOrWhiteSpace(request.OtpCode))
+		{
+			errors[nameof(request.OtpCode)] = new[] { "OtpCode is required." };
+		}
+
+		if(errors.Count > 0)
+		{
+			return this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors);
+		}
+
+		var result = await _passwordReset.ConfirmAsync(request.PhoneNumber, request.OtpCode, cancellationToken);
+
+		if(result.IsSuccess)
+		{
+			return Ok(new ConfirmPasswordResetResponse(true));
+		}
+
+		return result.Error switch
+		{
+			PasswordResetConfirmError.OtpInvalid => this.ProblemWithCode(
+				StatusCodes.Status400BadRequest,
+				ApiErrorCodes.OtpInvalid,
+				"Неверный код.",
+				"OTP не найден/истёк или не совпадает."),
+
+			PasswordResetConfirmError.PasswordResetExpired => this.ProblemWithCode(
+				StatusCodes.Status400BadRequest,
+				ApiErrorCodes.PasswordResetExpired,
+				"Запрос на смену пароля истёк.",
+				"Повторите запрос на смену пароля."),
+
+			PasswordResetConfirmError.UserNotFound => this.ProblemWithCode(
+				StatusCodes.Status404NotFound,
+				ApiErrorCodes.UserNotFound,
+				"Пользователь не найден."),
+
+			PasswordResetConfirmError.PhoneNotConfirmed => this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.PhoneNotConfirmed,
+				"Телефон не подтверждён.",
+				"Смена пароля доступна только для подтверждённого номера."),
+
+			_ => this.ProblemWithCode(
+				StatusCodes.Status500InternalServerError,
+				ApiErrorCodes.InternalError,
+				"Внутренняя ошибка."),
+		};
+	}
+
 	[HttpPost("confirm-phone")]
 	[ProducesResponseType(typeof(ConfirmPhoneResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<ActionResult<ConfirmPhoneResponse>> ConfirmPhone([FromBody] ConfirmPhoneRequest request, CancellationToken cancellationToken)
 	{
+		if(request is null)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["body"] = new[] { "Request body is required." },
+				});
+		}
+
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
 		if(string.IsNullOrWhiteSpace(request.PhoneNumber))
@@ -95,6 +324,16 @@ public sealed class UsersController : ControllerBase
 			return this.ValidationProblemWithCode(
 				ApiErrorCodes.ValidationFailed,
 				errors);
+		}
+
+		var existingUser = await _users.GetByPhoneAsync(request.PhoneNumber, cancellationToken);
+		if(existingUser is not null && existingUser.IsPhoneConfirmed)
+		{
+			return this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.PhoneAlreadyConfirmed,
+				"Телефон уже подтверждён.",
+				"Повторное подтверждение телефона не требуется.");
 		}
 
 		var ok = await _users.ConfirmPhoneAsync(request.PhoneNumber, request.OtpCode, cancellationToken);
@@ -313,6 +552,11 @@ public sealed class UsersController : ControllerBase
 			errors[nameof(request.NewPhoneNumber)] = new[] { "NewPhoneNumber has invalid format." };
 		}
 
+		if(string.IsNullOrWhiteSpace(request.OtpCode))
+		{
+			errors[nameof(request.OtpCode)] = new[] { "OtpCode is required." };
+		}
+
 		if(errors.Count > 0)
 		{
 			return this.ValidationProblemWithCode(
@@ -328,11 +572,20 @@ public sealed class UsersController : ControllerBase
 
 		try
 		{
-			var ok = await _users.ChangePhoneAsync(id, actorPassword!, request.NewPhoneNumber, cancellationToken);
+			var ok = await _users.ChangePhoneAsync(
+				id,
+				actorPassword!,
+				request.NewPhoneNumber,
+				request.OtpCode,
+				cancellationToken);
 
 			if(!ok)
 			{
-				return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверный пароль.", "ActorPassword не совпадает.");
+				return this.ProblemWithCode(
+					StatusCodes.Status400BadRequest,
+					ApiErrorCodes.OtpInvalid,
+					"Неверный код.",
+					"OTP не найден, истёк или не совпадает.");
 			}
 
 			return NoContent();
