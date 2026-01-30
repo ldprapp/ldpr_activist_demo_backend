@@ -7,5 +7,5 @@ public sealed record SubmissionDto(
 	DateTimeOffset SubmittedAt,
 	Guid? ConfirmedByAdminId,
 	DateTimeOffset? ConfirmedAt,
-	IReadOnlyList<string>? PhotoUrls,
+	IReadOnlyList<Guid>? PhotoImageIds,
 	string? ProofText);

@@ -1,6 +1,7 @@
 ﻿using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
 using LdprActivistDemo.Application.Users;
+using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -82,7 +83,9 @@ public sealed class TaskRepository : ITaskRepository
 			Description = model.Description,
 			RequirementsText = model.RequirementsText ?? string.Empty,
 			RewardPoints = model.RewardPoints,
-			CoverImageUrl = model.CoverImageUrl,
+			CoverImageId = model.CoverImageId.HasValue && model.CoverImageId.Value != Guid.Empty
+				? model.CoverImageId
+				: null,
 			ExecutionLocation = model.ExecutionLocation,
 			PublishedAt = model.PublishedAt,
 			DeadlineAt = model.DeadlineAt ?? model.PublishedAt,
@@ -177,11 +180,20 @@ public sealed class TaskRepository : ITaskRepository
 			}
 		}
 
+		var previousCoverId = task.CoverImageId;
+		var coverChanged = false;
+
 		task.Title = model.Title;
 		task.Description = model.Description;
 		task.RequirementsText = model.RequirementsText ?? string.Empty;
 		task.RewardPoints = model.RewardPoints;
-		task.CoverImageUrl = model.CoverImageUrl;
+
+		if(model.CoverImageId.HasValue)
+		{
+			coverChanged = true;
+			task.CoverImageId = model.CoverImageId.Value == Guid.Empty ? null : model.CoverImageId.Value;
+		}
+
 		task.ExecutionLocation = model.ExecutionLocation;
 		task.PublishedAt = model.PublishedAt;
 		task.DeadlineAt = model.DeadlineAt ?? model.PublishedAt;
@@ -201,6 +213,15 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		await _db.SaveChangesAsync(cancellationToken);
+
+		if(coverChanged && previousCoverId.HasValue && previousCoverId != task.CoverImageId)
+		{
+			await ImageGcHelpers.DeleteOrphanManyAsync(
+				_db,
+				new[] { previousCoverId.Value },
+				cancellationToken);
+		}
+
 		return TaskOperationResult.Success();
 	}
 
@@ -457,7 +478,7 @@ public sealed class TaskRepository : ITaskRepository
 			t.Description,
 			t.RequirementsText,
 			t.RewardPoints,
-			t.CoverImageUrl,
+			t.CoverImageId,
 			t.ExecutionLocation,
 			t.PublishedAt,
 			t.DeadlineAt,

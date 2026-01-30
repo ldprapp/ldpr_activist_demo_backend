@@ -7,7 +7,7 @@ public sealed record TaskCreateModel(
 	string Description,
 	string? RequirementsText,
 	int RewardPoints,
-	string? CoverImageUrl,
+	Guid? CoverImageId,
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,

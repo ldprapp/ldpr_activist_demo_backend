@@ -30,5 +30,7 @@ public sealed class User
 
 	public bool IsPhoneConfirmed { get; set; }
 
+	public string? AvatarImageUrl { get; set; }
+
 	public int Points { get; set; }
 }

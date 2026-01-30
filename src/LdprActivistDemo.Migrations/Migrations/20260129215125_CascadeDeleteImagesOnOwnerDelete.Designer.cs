@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260129215125_CascadeDeleteImagesOnOwnerDelete")]
+    partial class CascadeDeleteImagesOnOwnerDelete
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -157,6 +160,12 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<Guid?>("ConfirmedByAdminId")
                         .HasColumnType("uuid");
 
+                    b.PrimitiveCollection<Guid[]>("PhotoImageIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid[]")
+                        .HasDefaultValueSql("'{}'::uuid[]");
+
                     b.Property<string>("ProofText")
                         .HasColumnType("text");
 
@@ -179,21 +188,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .IsUnique();
 
                     b.ToTable("task_submissions", (string)null);
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskSubmissionImage", b =>
-                {
-                    b.Property<Guid>("SubmissionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ImageId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("SubmissionId", "ImageId");
-
-                    b.HasIndex("ImageId");
-
-                    b.ToTable("task_submission_images", (string)null);
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskTrustedAdmin", b =>
@@ -347,25 +341,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskSubmissionImage", b =>
-                {
-                    b.HasOne("LdprActivistDemo.Persistence.ImageEntity", "Image")
-                        .WithMany()
-                        .HasForeignKey("ImageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("LdprActivistDemo.Persistence.TaskSubmission", "Submission")
-                        .WithMany("PhotoImages")
-                        .HasForeignKey("SubmissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Image");
-
-                    b.Navigation("Submission");
-                });
-
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskTrustedAdmin", b =>
                 {
                     b.HasOne("LdprActivistDemo.Persistence.User", "AdminUser")
@@ -412,11 +387,6 @@ namespace LdprActivistDemo.Migrations.Migrations
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>
                 {
                     b.Navigation("TrustedAdmins");
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskSubmission", b =>
-                {
-                    b.Navigation("PhotoImages");
                 });
 #pragma warning restore 612, 618
         }

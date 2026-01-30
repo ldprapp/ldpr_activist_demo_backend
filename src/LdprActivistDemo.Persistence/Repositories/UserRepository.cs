@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
+using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -123,6 +124,9 @@ public sealed class UserRepository : IUserRepository
 			IsAdmin = false,
 			IsPhoneConfirmed = false,
 			Points = 0,
+			AvatarImageUrl = model.AvatarImageId.HasValue && model.AvatarImageId.Value != Guid.Empty
+				? model.AvatarImageId.Value.ToString("D")
+				: null,
 		};
 
 		_db.Users.Add(entity);
@@ -191,6 +195,10 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
+		var hadAvatar = ImageGcHelpers.TryExtractImageId(u.AvatarImageUrl, out var previousAvatarId);
+		Guid? newAvatarId = hadAvatar ? previousAvatarId : (Guid?)null;
+		var avatarChanged = false;
+
 		if(!_passwordHasher.Verify(u.PasswordHash, actorPassword))
 		{
 			return false;
@@ -210,7 +218,28 @@ public sealed class UserRepository : IUserRepository
 		u.RegionId = model.RegionId;
 		u.CityId = model.CityId;
 
+		if(model.AvatarImageId.HasValue)
+		{
+			avatarChanged = true;
+			if(model.AvatarImageId.Value == Guid.Empty)
+			{
+				u.AvatarImageUrl = null;
+				newAvatarId = null;
+			}
+			else
+			{
+				u.AvatarImageUrl = model.AvatarImageId.Value.ToString("D");
+				newAvatarId = model.AvatarImageId.Value;
+			}
+		}
+
 		await _db.SaveChangesAsync(cancellationToken);
+
+		if(avatarChanged && hadAvatar && newAvatarId != previousAvatarId)
+		{
+			await ImageGcHelpers.DeleteOrphanManyAsync(_db, new[] { previousAvatarId }, cancellationToken);
+		}
+
 		return true;
 	}
 

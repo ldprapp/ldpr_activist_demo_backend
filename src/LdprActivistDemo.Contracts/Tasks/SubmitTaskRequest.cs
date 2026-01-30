@@ -2,5 +2,5 @@
 
 public sealed record SubmitTaskRequest(
 	DateTimeOffset SubmittedAt,
-	IReadOnlyList<string>? PhotoUrls,
+	IReadOnlyList<Guid>? PhotoImageIds,
 	string? ProofText);

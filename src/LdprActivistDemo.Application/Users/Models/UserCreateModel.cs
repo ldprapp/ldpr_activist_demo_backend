@@ -9,4 +9,5 @@ public sealed record UserCreateModel(
 	string Password,
 	DateOnly BirthDate,
 	int RegionId,
-	int CityId);
+	int CityId,
+	Guid? AvatarImageId = null);

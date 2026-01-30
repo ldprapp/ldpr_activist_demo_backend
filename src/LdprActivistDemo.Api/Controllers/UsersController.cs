@@ -1,4 +1,6 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.Helpers;
+using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Users;
@@ -19,20 +21,23 @@ public sealed class UsersController : ControllerBase
 	private readonly IUserService _users;
 	private readonly IOtpService _otp;
 	private readonly IPasswordResetService _passwordReset;
+	private readonly IImageService _images;
 
-	public UsersController(IUserService users, IOtpService otp, IPasswordResetService passwordReset)
+	public UsersController(IUserService users, IOtpService otp, IPasswordResetService passwordReset, IImageService images)
 	{
 		_users = users ?? throw new ArgumentNullException(nameof(users));
 		_otp = otp ?? throw new ArgumentNullException(nameof(otp));
 		_passwordReset = passwordReset ?? throw new ArgumentNullException(nameof(passwordReset));
+		_images = images ?? throw new ArgumentNullException(nameof(images));
 	}
 
 	[HttpPost("register")]
+	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(UserIdResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
-	public async Task<ActionResult<UserIdResponse>> Register([FromBody] UserRegisterRequest request, CancellationToken cancellationToken)
+	public async Task<ActionResult<UserIdResponse>> Register([FromForm] RegisterUserFormRequest request, CancellationToken cancellationToken)
 	{
 		var errors = ValidateRegister(request);
 		if(errors.Count > 0)
@@ -42,6 +47,24 @@ public sealed class UsersController : ControllerBase
 
 		try
 		{
+			Guid? avatarImageId = null;
+			if(request.AvatarImage is not null)
+			{
+				var err = UploadedImageReader.ValidateImage(request.AvatarImage);
+				if(err is not null)
+				{
+					return this.ValidationProblemWithCode(
+						ApiErrorCodes.ValidationFailed,
+						new Dictionary<string, string[]>
+						{
+							["avatarImage"] = new[] { err },
+						});
+				}
+
+				var img = await UploadedImageReader.ReadAsync(request.AvatarImage, cancellationToken);
+				avatarImageId = await _images.CreateAsync(img, cancellationToken);
+			}
+
 			var userId = await _users.RegisterAsync(
 				new UserCreateModel(
 					LastName: request.LastName,
@@ -52,7 +75,8 @@ public sealed class UsersController : ControllerBase
 					Password: request.Password,
 					BirthDate: request.BirthDate,
 					RegionId: request.RegionId,
-					CityId: request.CityId),
+					CityId: request.CityId,
+					AvatarImageId: avatarImageId),
 				cancellationToken);
 
 			return Created($"/api/v1/users/{userId}", new UserIdResponse(userId));
@@ -459,6 +483,7 @@ public sealed class UsersController : ControllerBase
 	}
 
 	[HttpPut("{id:guid}")]
+	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -466,7 +491,7 @@ public sealed class UsersController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> Update(
 		Guid id,
-		[FromBody] UpdateUserRequest request,
+		[FromForm] UpdateUserFormRequest request,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorPassword,
 		CancellationToken cancellationToken)
 	{
@@ -494,6 +519,24 @@ public sealed class UsersController : ControllerBase
 
 		try
 		{
+			Guid? avatarImageId = null;
+			if(request.AvatarImage is not null)
+			{
+				var err = UploadedImageReader.ValidateImage(request.AvatarImage);
+				if(err is not null)
+				{
+					return this.ValidationProblemWithCode(
+						ApiErrorCodes.ValidationFailed,
+						new Dictionary<string, string[]>
+						{
+							["avatarImage"] = new[] { err },
+						});
+				}
+
+				var img = await UploadedImageReader.ReadAsync(request.AvatarImage, cancellationToken);
+				avatarImageId = await _images.CreateAsync(img, cancellationToken);
+			}
+
 			var ok = await _users.UpdateAsync(
 				new UserUpdateModel(
 					UserId: id,
@@ -503,7 +546,8 @@ public sealed class UsersController : ControllerBase
 					Gender: request.Gender,
 					BirthDate: request.BirthDate,
 					RegionId: request.RegionId,
-					CityId: request.CityId),
+					CityId: request.CityId,
+					AvatarImageId: avatarImageId),
 				actorPassword,
 				cancellationToken);
 
@@ -650,7 +694,35 @@ public sealed class UsersController : ControllerBase
 		u.IsPhoneConfirmed,
 		u.Points);
 
-	private static Dictionary<string, string[]> ValidateRegister(UserRegisterRequest r)
+	public sealed class RegisterUserFormRequest
+	{
+		public string LastName { get; set; } = string.Empty;
+		public string FirstName { get; set; } = string.Empty;
+		public string? MiddleName { get; set; }
+		public string? Gender { get; set; }
+		public string PhoneNumber { get; set; } = string.Empty;
+		public string Password { get; set; } = string.Empty;
+		public DateOnly BirthDate { get; set; }
+		public int RegionId { get; set; }
+		public int CityId { get; set; }
+
+		public IFormFile? AvatarImage { get; set; }
+	}
+
+	public sealed class UpdateUserFormRequest
+	{
+		public string LastName { get; set; } = string.Empty;
+		public string FirstName { get; set; } = string.Empty;
+		public string? MiddleName { get; set; }
+		public string? Gender { get; set; }
+		public DateOnly BirthDate { get; set; }
+		public int RegionId { get; set; }
+		public int CityId { get; set; }
+
+		public IFormFile? AvatarImage { get; set; }
+	}
+
+	private static Dictionary<string, string[]> ValidateRegister(RegisterUserFormRequest r)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
@@ -708,7 +780,7 @@ public sealed class UsersController : ControllerBase
 		return digits >= 10 && digits <= 15;
 	}
 
-	private static Dictionary<string, string[]> ValidateUpdate(UpdateUserRequest r)
+	private static Dictionary<string, string[]> ValidateUpdate(UpdateUserFormRequest r)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 

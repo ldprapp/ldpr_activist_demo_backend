@@ -20,10 +20,7 @@ public sealed class TaskSubmission
 
 	public DateTimeOffset? ConfirmedAt { get; set; }
 
-	/// <summary>
-	/// JSON-массив строк (URL/пути к фото). Для демо храним сырой json, без конвертеров.
-	/// </summary>
-	public string? PhotosJson { get; set; }
+	public List<TaskSubmissionImage> PhotoImages { get; set; } = new();
 
 	public string? ProofText { get; set; }
 }

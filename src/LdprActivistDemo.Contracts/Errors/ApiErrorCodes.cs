@@ -32,5 +32,7 @@ public static class ApiErrorCodes
 	public const string TaskSubmissionNotFound = "task_submission_not_found";
 	public const string TaskAccessDenied = "task_access_denied";
 
+	public const string ImageNotFound = "image_not_found";
+
 	public const string InternalError = "internal_error";
 }

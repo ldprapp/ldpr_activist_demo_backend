@@ -1,4 +1,6 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.Helpers;
+using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
 using LdprActivistDemo.Application.Users.Models;
@@ -17,13 +19,16 @@ public sealed class TasksController : ControllerBase
 	private const string ActorPasswordHeader = "X-Actor-Password";
 
 	private readonly ITaskService _tasks;
+	private readonly IImageService _images;
 
-	public TasksController(ITaskService tasks)
+	public TasksController(ITaskService tasks, IImageService images)
 	{
 		_tasks = tasks;
+		_images = images;
 	}
 
 	[HttpPost]
+	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(CreateTaskResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -32,7 +37,7 @@ public sealed class TasksController : ControllerBase
 	public async Task<IActionResult> CreateAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromBody] CreateTaskRequest request,
+		[FromForm] CreateTaskFormRequest request,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
@@ -47,19 +52,37 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		Guid? coverImageId = null;
+		if(request.CoverImage is not null)
+		{
+			var err = UploadedImageReader.ValidateImage(request.CoverImage);
+			if(err is not null)
+			{
+				return this.ValidationProblemWithCode(
+					ApiErrorCodes.ValidationFailed,
+					new Dictionary<string, string[]>
+					{
+						["coverImage"] = new[] { err },
+					});
+			}
+
+			var img = await UploadedImageReader.ReadAsync(request.CoverImage, cancellationToken);
+			coverImageId = await _images.CreateAsync(img, cancellationToken);
+		}
+
 		var model = new TaskCreateModel(
 			request.Title,
 			request.Description,
 			request.RequirementsText,
 			request.RewardPoints,
-			request.CoverImageUrl,
+			coverImageId,
 			request.ExecutionLocation,
 			request.PublishedAt,
 			request.DeadlineAt,
 			request.Status,
 			request.RegionId,
 			request.CityId,
-			request.TrustedAdminIds ?? Array.Empty<Guid>());
+			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
 
 		var result = await _tasks.CreateAsync(actorUserId, actorUserPassword!, model, cancellationToken);
 		if(!result.IsSuccess)
@@ -71,6 +94,7 @@ public sealed class TasksController : ControllerBase
 	}
 
 	[HttpPut("{taskId:guid}")]
+	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -80,7 +104,7 @@ public sealed class TasksController : ControllerBase
 		[FromRoute] Guid taskId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromBody] UpdateTaskRequest request,
+		[FromForm] UpdateTaskFormRequest request,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
@@ -95,19 +119,37 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		Guid? coverImageId = null;
+		if(request.CoverImage is not null)
+		{
+			var err = UploadedImageReader.ValidateImage(request.CoverImage);
+			if(err is not null)
+			{
+				return this.ValidationProblemWithCode(
+					ApiErrorCodes.ValidationFailed,
+					new Dictionary<string, string[]>
+					{
+						["coverImage"] = new[] { err },
+					});
+			}
+
+			var img = await UploadedImageReader.ReadAsync(request.CoverImage, cancellationToken);
+			coverImageId = await _images.CreateAsync(img, cancellationToken);
+		}
+
 		var model = new TaskUpdateModel(
 			request.Title,
 			request.Description,
 			request.RequirementsText,
 			request.RewardPoints,
-			request.CoverImageUrl,
+			coverImageId,
 			request.ExecutionLocation,
 			request.PublishedAt,
 			request.DeadlineAt,
 			request.Status,
 			request.RegionId,
 			request.CityId,
-			request.TrustedAdminIds ?? Array.Empty<Guid>());
+			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
 
 		var result = await _tasks.UpdateAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
@@ -308,6 +350,7 @@ public sealed class TasksController : ControllerBase
 	}
 
 	[HttpPost("{taskId:guid}/submit")]
+	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -317,7 +360,7 @@ public sealed class TasksController : ControllerBase
 		[FromRoute] Guid taskId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromBody] SubmitTaskRequest request,
+		[FromForm] SubmitTaskFormRequest request,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
@@ -329,8 +372,34 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		IReadOnlyList<Guid>? photoImageIds = null;
+
+		if(request.Photos is { Count: > 0 })
+		{
+			var models = new List<LdprActivistDemo.Application.Images.Models.ImageCreateModel>(request.Photos.Count);
+
+			for(var i = 0; i < request.Photos.Count; i++)
+			{
+				var f = request.Photos[i];
+				var err = UploadedImageReader.ValidateImage(f);
+				if(err is not null)
+				{
+					return this.ValidationProblemWithCode(
+						ApiErrorCodes.ValidationFailed,
+						new Dictionary<string, string[]>
+						{
+							[$"photos[{i}]"] = new[] { err },
+						});
+				}
+
+				models.Add(await UploadedImageReader.ReadAsync(f, cancellationToken));
+			}
+
+			photoImageIds = await _images.CreateManyAsync(models, cancellationToken);
+		}
+
 		var model = new TaskSubmissionCreateModel(
-			PhotoUrls: request.PhotoUrls,
+			PhotoImageIds: photoImageIds,
 			ProofText: request.ProofText,
 			SubmittedAt: request.SubmittedAt == default
 				? DateTimeOffset.UtcNow
@@ -346,6 +415,7 @@ public sealed class TasksController : ControllerBase
 	}
 
 	[HttpPut("{taskId:guid}/submission")]
+	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -355,7 +425,7 @@ public sealed class TasksController : ControllerBase
 		[FromRoute] Guid taskId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromBody] SubmitTaskRequest request,
+		[FromForm] SubmitTaskFormRequest request,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
@@ -364,13 +434,83 @@ public sealed class TasksController : ControllerBase
 		var invalid = TryBuildValidationProblemIfInvalidModel();
 		if(invalid is not null) return invalid;
 
+		IReadOnlyList<Guid>? photoImageIds = null;
+
+		if(request.Photos is { Count: > 0 })
+		{
+			var models = new List<LdprActivistDemo.Application.Images.Models.ImageCreateModel>(request.Photos.Count);
+
+			for(var i = 0; i < request.Photos.Count; i++)
+			{
+				var f = request.Photos[i];
+				var err = UploadedImageReader.ValidateImage(f);
+				if(err is not null)
+				{
+					return this.ValidationProblemWithCode(
+						ApiErrorCodes.ValidationFailed,
+						new Dictionary<string, string[]>
+						{
+							[$"photos[{i}]"] = new[] { err },
+						});
+				}
+
+				models.Add(await UploadedImageReader.ReadAsync(f, cancellationToken));
+			}
+
+			photoImageIds = await _images.CreateManyAsync(models, cancellationToken);
+		}
+
 		var model = new TaskSubmissionCreateModel(
-			PhotoUrls: request.PhotoUrls,
+			PhotoImageIds: photoImageIds,
 			ProofText: request.ProofText,
 			SubmittedAt: request.SubmittedAt == default ? DateTimeOffset.UtcNow : request.SubmittedAt);
 
 		var result = await _tasks.UpdateSubmissionAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
+	}
+
+	public sealed class CreateTaskFormRequest
+	{
+		public string Title { get; set; } = string.Empty;
+		public string Description { get; set; } = string.Empty;
+		public string? RequirementsText { get; set; }
+		public int RewardPoints { get; set; }
+
+		public IFormFile? CoverImage { get; set; }
+
+		public string? ExecutionLocation { get; set; }
+		public DateTimeOffset PublishedAt { get; set; }
+		public DateTimeOffset? DeadlineAt { get; set; }
+		public LdprActivistDemo.Contracts.Tasks.TaskStatus Status { get; set; }
+		public int RegionId { get; set; }
+		public int? CityId { get; set; }
+		public List<Guid>? TrustedAdminIds { get; set; }
+	}
+
+	public sealed class UpdateTaskFormRequest
+	{
+		public string Title { get; set; } = string.Empty;
+		public string Description { get; set; } = string.Empty;
+		public string? RequirementsText { get; set; }
+		public int RewardPoints { get; set; }
+
+		public IFormFile? CoverImage { get; set; }
+
+		public string? ExecutionLocation { get; set; }
+		public DateTimeOffset PublishedAt { get; set; }
+		public DateTimeOffset? DeadlineAt { get; set; }
+		public LdprActivistDemo.Contracts.Tasks.TaskStatus Status { get; set; }
+		public int RegionId { get; set; }
+		public int? CityId { get; set; }
+		public List<Guid>? TrustedAdminIds { get; set; }
+	}
+
+	public sealed class SubmitTaskFormRequest
+	{
+		public DateTimeOffset SubmittedAt { get; set; }
+		public string? ProofText { get; set; }
+
+		public List<IFormFile>? Photos { get; set; }
 	}
 
 	[HttpGet("{taskId:guid}/submitted")]
@@ -547,7 +687,7 @@ public sealed class TasksController : ControllerBase
 			t.Description,
 			t.RequirementsText,
 			t.RewardPoints,
-			t.CoverImageUrl,
+			t.CoverImageId,
 			t.ExecutionLocation,
 			t.PublishedAt,
 			t.DeadlineAt,
@@ -562,7 +702,7 @@ public sealed class TasksController : ControllerBase
 			t.Title,
 			t.Description,
 			t.RewardPoints,
-			t.CoverImageUrl,
+			t.CoverImageId,
 			t.DeadlineAt,
 			t.Status,
 			t.RegionId,
@@ -590,6 +730,6 @@ public sealed class TasksController : ControllerBase
 			s.SubmittedAt,
 			s.ConfirmedByAdminId,
 			s.ConfirmedAt,
-			s.PhotoUrls,
+			s.PhotoImageIds,
 			s.ProofText);
 }

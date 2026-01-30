@@ -1,9 +1,8 @@
-﻿using System.Text.Json;
-
-using LdprActivistDemo.Application.Tasks;
+﻿using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
 using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
+using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -14,8 +13,6 @@ namespace LdprActivistDemo.Persistence;
 
 public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 {
-	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.General);
-
 	private readonly AppDbContext _db;
 	private readonly IUserRepository _users;
 	private readonly IPasswordHasher _passwordHasher;
@@ -82,8 +79,6 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		   .AsNoTracking()
 		   .FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
 
-		var photosJson = model.PhotoUrls is null ? null : JsonSerializer.Serialize(model.PhotoUrls, JsonOptions);
-
 		if(existing is not null)
 		{
 			return TaskSubmitOperationResult.Fail(existing.ConfirmedAt is null
@@ -91,15 +86,47 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				: TaskOperationError.AlreadySubmitted);
 		}
 
-		_db.TaskSubmissions.Add(new TaskSubmission
+		var photoIds = (model.PhotoImageIds ?? Array.Empty<Guid>())
+			.Where(x => x != Guid.Empty)
+			.Distinct()
+			.ToArray();
+
+		if(photoIds.Length > 0)
+		{
+			var count = await _db.Images.AsNoTracking()
+				.Where(i => photoIds.Contains(i.Id))
+				.CountAsync(cancellationToken);
+
+			if(count != photoIds.Length)
+			{
+				_logger.LogWarning(
+					"SubmitTask rejected: some PhotoImageIds not found. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+					actorUserId,
+					taskId);
+				return TaskSubmitOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
+		}
+
+		var submission = new TaskSubmission
 		{
 			Id = Guid.NewGuid(),
 			TaskId = taskId,
 			UserId = actorUserId,
 			SubmittedAt = model.SubmittedAt,
-			PhotosJson = photosJson,
 			ProofText = model.ProofText,
-		});
+		};
+
+		_db.TaskSubmissions.Add(submission);
+
+		foreach(var imageId in photoIds)
+		{
+			_db.TaskSubmissionImages.Add(new TaskSubmissionImage
+			{
+				SubmissionId = submission.Id,
+				ImageId = imageId,
+			});
+		}
+
 		await _db.SaveChangesAsync(cancellationToken);
 		return TaskSubmitOperationResult.Created();
 	}
@@ -133,10 +160,68 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
 		}
 
+		HashSet<Guid>? oldPhotoIds = null;
+		Guid[]? newPhotoIds = null;
+
+		if(model.PhotoImageIds is not null)
+		{
+			oldPhotoIds = await _db.TaskSubmissionImages.AsNoTracking()
+				.Where(x => x.SubmissionId == existing.Id)
+				.Select(x => x.ImageId)
+				.ToHashSetAsync(cancellationToken);
+
+			newPhotoIds = model.PhotoImageIds
+				.Where(x => x != Guid.Empty)
+				.Distinct()
+				.ToArray();
+
+			if(newPhotoIds.Length > 0)
+			{
+				var count = await _db.Images.AsNoTracking()
+					.Where(i => newPhotoIds.Contains(i.Id))
+					.CountAsync(cancellationToken);
+
+				if(count != newPhotoIds.Length)
+				{
+					_logger.LogWarning(
+						"UpdateSubmission rejected: some PhotoImageIds not found. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+						actorUserId,
+						taskId);
+					return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+				}
+			}
+		}
+
 		existing.SubmittedAt = model.SubmittedAt;
-		existing.PhotosJson = model.PhotoUrls is null ? null : JsonSerializer.Serialize(model.PhotoUrls, JsonOptions);
 		existing.ProofText = model.ProofText;
+
+		if(newPhotoIds is not null)
+		{
+			await _db.TaskSubmissionImages
+				.Where(x => x.SubmissionId == existing.Id)
+				.ExecuteDeleteAsync(cancellationToken);
+
+			foreach(var imageId in newPhotoIds)
+			{
+				_db.TaskSubmissionImages.Add(new TaskSubmissionImage
+				{
+					SubmissionId = existing.Id,
+					ImageId = imageId,
+				});
+			}
+		}
+
 		await _db.SaveChangesAsync(cancellationToken);
+
+		if(oldPhotoIds is not null && newPhotoIds is not null)
+		{
+			var removed = oldPhotoIds.Except(newPhotoIds).ToArray();
+			if(removed.Length > 0)
+			{
+				await ImageGcHelpers.DeleteOrphanManyAsync(_db, removed, cancellationToken);
+			}
+		}
+
 		return TaskOperationResult.Success();
 	}
 
@@ -237,6 +322,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var submission = await _db.TaskSubmissions.AsNoTracking()
+			.Include(x => x.PhotoImages)
 			.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == userId, cancellationToken);
 		if(submission is null)
 		{
@@ -305,18 +391,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	private static TaskSubmissionModel ToSubmissionModel(TaskSubmission s)
 	{
-		IReadOnlyList<string>? photos = null;
-		if(!string.IsNullOrWhiteSpace(s.PhotosJson))
-		{
-			try
-			{
-				photos = JsonSerializer.Deserialize<List<string>>(s.PhotosJson!, JsonOptions);
-			}
-			catch
-			{
-				photos = null;
-			}
-		}
+		var photoIds = s.PhotoImages.Count == 0
+			? Array.Empty<Guid>()
+			: s.PhotoImages.Select(x => x.ImageId).ToArray();
 
 		return new TaskSubmissionModel(
 			s.Id,
@@ -325,7 +402,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			s.SubmittedAt,
 			s.ConfirmedByAdminId,
 			s.ConfirmedAt,
-			photos,
+			photoIds,
 			s.ProofText);
 	}
 }

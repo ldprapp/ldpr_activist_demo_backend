@@ -24,10 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\version"
-          Link="version"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\version" Link="version" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 	
 </Project>

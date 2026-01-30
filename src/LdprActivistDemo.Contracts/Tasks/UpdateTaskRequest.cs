@@ -7,7 +7,7 @@ public sealed record UpdateTaskRequest(
 	[Required] string Description,
 	string? RequirementsText,
 	[Range(0, int.MaxValue)] int RewardPoints,
-	string? CoverImageUrl,
+	Guid? CoverImageId,
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,

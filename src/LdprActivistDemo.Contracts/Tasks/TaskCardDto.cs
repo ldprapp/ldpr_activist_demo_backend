@@ -5,7 +5,7 @@ public sealed record TaskCardDto(
 	string Title,
 	string Description,
 	int RewardPoints,
-	string? CoverImageUrl,
+	Guid? CoverImageId,
 	DateTimeOffset? DeadlineAt,
 	TaskStatus Status,
 	int RegionId,

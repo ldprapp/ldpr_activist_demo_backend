@@ -16,10 +16,20 @@ public sealed class AppDbContext : DbContext
 	public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
 	public DbSet<TaskTrustedAdmin> TaskTrustedAdmins => Set<TaskTrustedAdmin>();
 	public DbSet<TaskSubmission> TaskSubmissions => Set<TaskSubmission>();
+	public DbSet<TaskSubmissionImage> TaskSubmissionImages => Set<TaskSubmissionImage>();
+	public DbSet<ImageEntity> Images => Set<ImageEntity>();
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
 		base.OnModelCreating(modelBuilder);
+
+		modelBuilder.Entity<ImageEntity>(b =>
+		{
+			b.ToTable("images");
+			b.HasKey(x => x.Id);
+			b.Property(x => x.ContentType).IsRequired();
+			b.Property(x => x.Data).IsRequired();
+		});
 
 		modelBuilder.Entity<Region>(b =>
 		{
@@ -64,6 +74,8 @@ public sealed class AppDbContext : DbContext
 
 			b.Property(x => x.Points).HasDefaultValue(0);
 
+			b.Property(x => x.AvatarImageUrl);
+
 			b.HasOne(x => x.Region)
 				.WithMany()
 				.HasForeignKey(x => x.RegionId)
@@ -85,6 +97,12 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.RequirementsText).IsRequired();
 
 			b.Property(x => x.RewardPoints).IsRequired();
+
+			b.Property(x => x.CoverImageId);
+			b.HasOne<ImageEntity>()
+				.WithMany()
+				.HasForeignKey(x => x.CoverImageId)
+				.OnDelete(DeleteBehavior.SetNull);
 
 			b.HasOne(x => x.AuthorUser)
 				.WithMany()
@@ -142,5 +160,32 @@ public sealed class AppDbContext : DbContext
 				.HasForeignKey(x => x.ConfirmedByAdminId)
 				.OnDelete(DeleteBehavior.SetNull);
 		});
+
+		modelBuilder.Entity<TaskSubmissionImage>(b =>
+		{
+			b.ToTable("task_submission_images");
+			b.HasKey(x => new { x.SubmissionId, x.ImageId });
+
+			b.HasOne(x => x.Submission)
+				.WithMany(s => s.PhotoImages)
+				.HasForeignKey(x => x.SubmissionId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			b.HasOne(x => x.Image)
+				.WithMany()
+				.HasForeignKey(x => x.ImageId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			b.HasIndex(x => x.ImageId);
+		});
 	}
+
+	public override int SaveChanges(bool acceptAllChangesOnSuccess)
+		=> SaveChangesAsync(acceptAllChangesOnSuccess, CancellationToken.None).GetAwaiter().GetResult();
+
+	public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+		=> SaveChangesAsync(true, cancellationToken);
+
+	public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+		=> base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
 }

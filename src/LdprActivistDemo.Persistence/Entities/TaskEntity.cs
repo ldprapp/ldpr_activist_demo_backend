@@ -18,7 +18,7 @@ public sealed class TaskEntity
 
 	public int RewardPoints { get; set; }
 
-	public string? CoverImageUrl { get; set; }
+	public Guid? CoverImageId { get; set; }
 
 	public string? ExecutionLocation { get; set; }
 

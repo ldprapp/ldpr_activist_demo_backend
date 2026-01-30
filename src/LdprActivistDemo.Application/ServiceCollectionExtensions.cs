@@ -1,4 +1,5 @@
 ﻿using LdprActivistDemo.Application.Geo;
+using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Tasks;
@@ -24,6 +25,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<ITaskService, TaskService>();
+		services.AddScoped<IImageService, ImageService>();
 
 		services.AddSingleton<UnconfirmedUsersCleanupHostedService>();
 		services.AddSingleton<IHostedService>(sp =>

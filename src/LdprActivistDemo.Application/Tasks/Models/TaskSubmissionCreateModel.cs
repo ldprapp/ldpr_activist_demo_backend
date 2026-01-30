@@ -1,6 +1,6 @@
 ﻿namespace LdprActivistDemo.Application.Tasks.Models;
 
 public sealed record TaskSubmissionCreateModel(
-	IReadOnlyList<string>? PhotoUrls,
+	IReadOnlyList<Guid>? PhotoImageIds,
 	string? ProofText,
 	DateTimeOffset SubmittedAt);
