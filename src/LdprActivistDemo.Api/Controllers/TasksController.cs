@@ -619,6 +619,42 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	[HttpPost("{taskId:guid}/rejected")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> RejectAsync(
+		[FromRoute] Guid taskId,
+		[FromQuery] Guid actorUserId,
+		[FromQuery] Guid userId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		if(userId == Guid.Empty)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["userId"] = new[] { "UserId is required." },
+				},
+				title: "Некорректный запрос.",
+				detail: "Передайте userId параметром запроса.");
+		}
+
+		var result = await _tasks.RejectAsync(actorUserId, actorUserPassword!, taskId, userId, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
+	}
+
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
@@ -672,7 +708,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),
 			TaskOperationError.CityRegionMismatch => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Город не принадлежит региону.", "Указанный город должен относиться к указанному региону."),
 			TaskOperationError.TaskClosed => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskClosed, "Задача закрыта.", "Операция недоступна для закрытой задачи."),
-			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя редактировать подтверждённую заявку."),
+			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя изменять подтверждённую заявку."),
 			TaskOperationError.SubmissionAlreadyExists => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskSubmissionExists, "Заявка уже существует.", "Повторная отправка запрещена. Используйте PUT /api/v1/tasks/{taskId}/submission для редактирования (пока заявка не подтверждена)."),
 			TaskOperationError.SubmissionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskSubmissionNotFound, "Заявка не найдена."),
 			TaskOperationError.UserNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.", "Пользователь не существует или один из TrustedAdminIds не является администратором."),
@@ -728,8 +764,9 @@ public sealed class TasksController : ControllerBase
 			s.TaskId,
 			s.UserId,
 			s.SubmittedAt,
-			s.ConfirmedByAdminId,
-			s.ConfirmedAt,
+			s.DecisionStatus,
+			s.DecidedByAdminId,
+			s.DecidedAt,
 			s.PhotoImageIds,
 			s.ProofText);
 }

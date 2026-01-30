@@ -140,7 +140,12 @@ public sealed class AppDbContext : DbContext
 
 		modelBuilder.Entity<TaskSubmission>(b =>
 		{
-			b.ToTable("task_submissions");
+			b.ToTable("task_submissions", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_task_submissions_decision_status_allowed",
+					"\"DecisionStatus\" IS NULL OR \"DecisionStatus\" IN ('approve','rejected')");
+			});
 			b.HasKey(x => x.Id);
 
 			b.HasIndex(x => new { x.TaskId, x.UserId }).IsUnique();
@@ -155,9 +160,9 @@ public sealed class AppDbContext : DbContext
 				.HasForeignKey(x => x.UserId)
 				.OnDelete(DeleteBehavior.Cascade);
 
-			b.HasOne(x => x.ConfirmedByAdmin)
+			b.HasOne(x => x.DecidedByAdmin)
 				.WithMany()
-				.HasForeignKey(x => x.ConfirmedByAdminId)
+				.HasForeignKey(x => x.DecidedByAdminId)
 				.OnDelete(DeleteBehavior.SetNull);
 		});
 

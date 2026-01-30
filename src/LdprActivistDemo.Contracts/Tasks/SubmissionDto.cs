@@ -5,7 +5,8 @@ public sealed record SubmissionDto(
 	Guid TaskId,
 	Guid UserId,
 	DateTimeOffset SubmittedAt,
-	Guid? ConfirmedByAdminId,
-	DateTimeOffset? ConfirmedAt,
+	string? DecisionStatus,
+	Guid? DecidedByAdminId,
+	DateTimeOffset? DecidedAt,
 	IReadOnlyList<Guid>? PhotoImageIds,
 	string? ProofText);

@@ -69,6 +69,9 @@ public sealed class TaskService : ITaskService
 	public Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
 		=> _submissions.ApproveAsync(actorUserId, actorPassword, taskId, userId, DateTimeOffset.UtcNow, cancellationToken);
 
+	public Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
+		=> _submissions.RejectAsync(actorUserId, actorPassword, taskId, userId, DateTimeOffset.UtcNow, cancellationToken);
+
 	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
 		=> _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword, cancellationToken);
 

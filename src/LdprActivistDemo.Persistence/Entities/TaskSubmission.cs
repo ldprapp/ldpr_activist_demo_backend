@@ -14,11 +14,13 @@ public sealed class TaskSubmission
 
 	public DateTimeOffset SubmittedAt { get; set; }
 
-	public Guid? ConfirmedByAdminId { get; set; }
+	public string? DecisionStatus { get; set; }
 
-	public User? ConfirmedByAdmin { get; set; }
+	public Guid? DecidedByAdminId { get; set; }
 
-	public DateTimeOffset? ConfirmedAt { get; set; }
+	public User? DecidedByAdmin { get; set; }
+
+	public DateTimeOffset? DecidedAt { get; set; }
 
 	public List<TaskSubmissionImage> PhotoImages { get; set; } = new();
 

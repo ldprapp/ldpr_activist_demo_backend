@@ -394,7 +394,9 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		var tasks = await _db.TaskSubmissions.AsNoTracking()
-			.Where(s => s.UserId == actorUserId && s.ConfirmedAt == null)
+			.Where(s => s.UserId == actorUserId
+				&& (s.DecisionStatus == null
+					|| s.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Rejected))
 			.OrderByDescending(s => s.SubmittedAt)
 			.Join(_db.Tasks.AsNoTracking(),
 				s => s.TaskId,
@@ -415,8 +417,9 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		var tasks = await _db.TaskSubmissions.AsNoTracking()
-			.Where(s => s.UserId == actorUserId && s.ConfirmedAt != null)
-			.OrderByDescending(s => s.ConfirmedAt)
+			.Where(s => s.UserId == actorUserId
+				&& s.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
+			.OrderByDescending(s => s.DecidedAt)
 			.Join(_db.Tasks.AsNoTracking(),
 				s => s.TaskId,
 				t => t.Id,

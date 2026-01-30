@@ -81,9 +81,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(existing is not null)
 		{
-			return TaskSubmitOperationResult.Fail(existing.ConfirmedAt is null
-				? TaskOperationError.SubmissionAlreadyExists
-				: TaskOperationError.AlreadySubmitted);
+			return TaskSubmitOperationResult.Fail(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve
+				? TaskOperationError.AlreadySubmitted
+				: TaskOperationError.SubmissionAlreadyExists);
 		}
 
 		var photoIds = (model.PhotoImageIds ?? Array.Empty<Guid>())
@@ -155,7 +155,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
-		if(existing.ConfirmedAt is not null)
+		if(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
 		}
@@ -235,7 +235,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
 		}
 		var list = await _db.TaskSubmissions.AsNoTracking()
-			.Where(x => x.TaskId == taskId && x.ConfirmedAt == null)
+			.Where(x => x.TaskId == taskId
+				&& (x.DecisionStatus == null
+					|| x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Rejected))
 			.Join(_db.Users.AsNoTracking(),
 				s => s.UserId,
 				u => u.Id,
@@ -271,7 +273,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var list = await _db.TaskSubmissions.AsNoTracking()
-			.Where(x => x.TaskId == taskId && x.ConfirmedAt != null)
+			.Where(x => x.TaskId == taskId
+				&& x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
 			.Join(_db.Users.AsNoTracking(),
 				s => s.UserId,
 				u => u.Id,
@@ -340,7 +343,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			ToSubmissionModel(submission)));
 	}
 
-	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorUserPassword, Guid taskId, Guid userId, DateTimeOffset confirmedAt, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorUserPassword, Guid taskId, Guid userId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
 	{
 		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
@@ -354,13 +357,41 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
-		if(submission.ConfirmedAt is not null)
+		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
 		}
 
-		submission.ConfirmedByAdminId = actorUserId;
-		submission.ConfirmedAt = confirmedAt;
+		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve;
+		submission.DecidedByAdminId = actorUserId;
+		submission.DecidedAt = decidedAt;
+		await _db.SaveChangesAsync(cancellationToken);
+		return TaskOperationResult.Success();
+	}
+
+	public async Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorUserPassword, Guid taskId, Guid userId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
+	{
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+		if(accessError != TaskOperationError.None)
+		{
+			return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
+		}
+
+		var submission = await _db.TaskSubmissions
+			.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == userId, cancellationToken);
+		if(submission is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
+		}
+
+		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Rejected;
+		submission.DecidedByAdminId = actorUserId;
+		submission.DecidedAt = decidedAt;
 		await _db.SaveChangesAsync(cancellationToken);
 		return TaskOperationResult.Success();
 	}
@@ -400,8 +431,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			s.TaskId,
 			s.UserId,
 			s.SubmittedAt,
-			s.ConfirmedByAdminId,
-			s.ConfirmedAt,
+			s.DecisionStatus,
+			s.DecidedByAdminId,
+			s.DecidedAt,
 			photoIds,
 			s.ProofText);
 	}
