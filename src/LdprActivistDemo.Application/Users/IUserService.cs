@@ -16,5 +16,5 @@ public interface IUserService
 	Task<IReadOnlyList<UserFullNameModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken);
 	Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<Guid>> GetAdminIdsAsync(CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(CancellationToken cancellationToken);
 }

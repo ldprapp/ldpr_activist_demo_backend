@@ -673,12 +673,12 @@ public sealed class UsersController : ControllerBase
 		return Ok(new IsAdminResponse(isAdmin));
 	}
 
-	[HttpGet("admin-ids")]
-	[ProducesResponseType(typeof(IReadOnlyList<Guid>), StatusCodes.Status200OK)]
-	public async Task<ActionResult<IReadOnlyList<Guid>>> GetAdminIds(CancellationToken cancellationToken)
+	[HttpGet("admins")]
+	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetAdmins(CancellationToken cancellationToken)
 	{
-		var ids = await _users.GetAdminIdsAsync(cancellationToken);
-		return Ok(ids);
+		var admins = await _users.GetAdminsAsync(cancellationToken);
+		return Ok(admins.Select(ToDto).ToList());
 	}
 
 	private static UserDto ToDto(UserPublicModel u) => new(

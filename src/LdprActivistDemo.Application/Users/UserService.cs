@@ -118,8 +118,25 @@ public sealed class UserService : IUserService
 	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken) =>
 		_users.IsAdminAsync(userId, cancellationToken);
 
-	public Task<IReadOnlyList<Guid>> GetAdminIdsAsync(CancellationToken cancellationToken) =>
-		_users.GetAllAdminIdsAsync(cancellationToken);
+	public async Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(CancellationToken cancellationToken)
+	{
+		var ids = await _users.GetAllAdminIdsAsync(cancellationToken);
+		if(ids.Count == 0)
+		{
+			return Array.Empty<UserPublicModel>();
+		}
+
+		var admins = await Task.WhenAll(
+			ids.Select(id => _users.GetPublicByIdAsync(id, cancellationToken)));
+
+		return admins
+			.Where(x => x is not null)
+			.Select(x => x!)
+			.OrderBy(x => x.LastName)
+			.ThenBy(x => x.FirstName)
+			.ThenBy(x => x.MiddleName)
+			.ToList();
+	}
 
 	private static UserPublicModel ToPublic(UserInternalModel u) =>
 		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.Points);
