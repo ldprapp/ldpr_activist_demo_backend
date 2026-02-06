@@ -44,6 +44,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IUserRepository, UserRepository>();
 		services.AddScoped<IPasswordResetRepository, PasswordResetRepository>();
 		services.AddScoped<ITaskRepository, TaskRepository>();
+		services.AddScoped<ITaskFeedRepository, TaskFeedRepository>();
 		services.AddScoped<ITaskSubmissionRepository, TaskSubmissionRepository>();
 		return services;
 	}

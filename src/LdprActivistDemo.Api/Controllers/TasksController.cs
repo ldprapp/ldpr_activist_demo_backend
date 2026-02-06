@@ -19,11 +19,13 @@ public sealed class TasksController : ControllerBase
 	private const string ActorPasswordHeader = "X-Actor-Password";
 
 	private readonly ITaskService _tasks;
+	private readonly ITaskFeedRepository _taskFeed;
 	private readonly IImageService _images;
 
-	public TasksController(ITaskService tasks, IImageService images)
+	public TasksController(ITaskService tasks, ITaskFeedRepository taskFeed, IImageService images)
 	{
 		_tasks = tasks;
+		_taskFeed = taskFeed;
 		_images = images;
 	}
 
@@ -214,139 +216,155 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
-	[HttpGet("feed/by-region")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskCardDto>), StatusCodes.Status200OK)]
+	[HttpGet("feed/admin")]
+	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<IActionResult> GetRegionFeedAsync([FromQuery] int regionId, CancellationToken cancellationToken)
-	{
-		if(regionId <= 0)
-		{
-			var errors = new Dictionary<string, string[]>
-			{
-				["regionId"] = new[] { "RegionId must be positive." },
-			};
-
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				errors,
-				title: "Некорректный запрос.",
-				detail: "regionId должен быть положительным числом.");
-		}
-
-		var tasks = await _tasks.GetByRegionAsync(regionId, cancellationToken);
-		return Ok(tasks.Select(ToCardDto).ToList());
-	}
-
-	[HttpGet("feed/by-city")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskCardDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<IActionResult> GetCityFeedAsync([FromQuery] int regionId, [FromQuery] int cityId, CancellationToken cancellationToken)
-	{
-		if(regionId <= 0 || cityId <= 0)
-		{
-			var errors = new Dictionary<string, string[]>
-			{
-				["regionId"] = regionId <= 0 ? new[] { "RegionId must be positive." } : Array.Empty<string>(),
-				["cityId"] = cityId <= 0 ? new[] { "CityId must be positive." } : Array.Empty<string>(),
-			};
-
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				errors,
-				title: "Некорректный запрос.",
-				detail: "regionId и cityId должны быть положительными числами.");
-		}
-
-		var tasks = await _tasks.GetByRegionAndCityAsync(regionId, cityId, cancellationToken);
-		return Ok(tasks.Select(ToCardDto).ToList());
-	}
-
-	[HttpGet("available")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskCardDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetAvailableAsync(
-		[FromQuery] Guid userId,
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	public async Task<IActionResult> GetAdminFeedAsync(
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromQuery] bool onlyMine,
+		[FromQuery] int? regionId,
+		[FromQuery] int? cityId,
+		[FromQuery] int? start,
+		[FromQuery] int? end,
 		CancellationToken cancellationToken)
 	{
-		if(userId == Guid.Empty)
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
 		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["userId"] = new[] { "UserId is required." },
-				},
-				title: "Некорректный запрос.",
-				detail: "Передайте userId параметром запроса.");
+			return invalidActor;
 		}
 
-		var result = await _tasks.GetAvailableForUserAsync(userId, cancellationToken);
+		var invalidFilters = TryBuildFeedFilterValidationProblem(regionId, cityId);
+		if(invalidFilters is not null)
+		{
+			return invalidFilters;
+		}
+
+		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var probe = await _tasks.DeleteAsync(actorUserId, actorUserPassword!, Guid.NewGuid(), cancellationToken);
+		if(!probe.IsSuccess && (probe.Error == TaskOperationError.InvalidCredentials || probe.Error == TaskOperationError.Forbidden))
+		{
+			return MapTaskError(probe.Error);
+		}
+
+		if(onlyMine)
+		{
+			var tasks = await _tasks.GetByAdminAsync(actorUserId, cancellationToken);
+
+			IEnumerable<TaskModel> filtered = tasks;
+			if(regionId is not null)
+			{
+				filtered = cityId is null
+					? filtered.Where(t => t.RegionId == regionId.Value)
+					: filtered.Where(t => t.RegionId == regionId.Value && t.CityId == cityId.Value);
+			}
+
+			var onlyMineDtos = filtered.Select(ToDto).ToList();
+			return Ok(ApplyFeedPagination(onlyMineDtos, start, end));
+		}
+
+		if(regionId is not null)
+		{
+			var tasks = cityId is null
+				? await _tasks.GetByRegionAsync(regionId.Value, cancellationToken)
+				: await _tasks.GetByRegionAndCityAsync(regionId.Value, cityId.Value, cancellationToken);
+
+			var regionDtos = tasks.Select(ToDto).ToList();
+			return Ok(ApplyFeedPagination(regionDtos, start, end));
+		}
+
+		var taskIds = await _taskFeed.GetAllTaskIdsAsync(cancellationToken);
+		if(start is null || end is null)
+		{
+			var allDtos = new List<TaskDto>(taskIds.Count);
+
+			for(var i = 0; i < taskIds.Count; i++)
+			{
+				var r = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
+				if(r.IsSuccess && r.Value is not null)
+				{
+					allDtos.Add(ToDto(r.Value));
+				}
+			}
+
+			return Ok(allDtos);
+		}
+
+		var pagedDtos = new List<TaskDto>(end.Value - start.Value + 1);
+		var returnedIndex = 0;
+
+		for(var i = 0; i < taskIds.Count; i++)
+		{
+			var r = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
+			if(!r.IsSuccess || r.Value is null)
+			{
+				continue;
+			}
+
+			returnedIndex++;
+
+			if(returnedIndex < start.Value)
+			{
+				continue;
+			}
+
+			if(returnedIndex > end.Value)
+			{
+				break;
+			}
+
+			pagedDtos.Add(ToDto(r.Value));
+		}
+
+		return Ok(pagedDtos);
+	}
+
+	[HttpGet("feed/user")]
+	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<IActionResult> GetUserFeedAsync(
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromQuery] int? start,
+		[FromQuery] int? end,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var auth = await _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!auth.IsSuccess)
+		{
+			return MapTaskError(auth.Error);
+		}
+
+		var result = await _tasks.GetAvailableForUserAsync(actorUserId, cancellationToken);
 		if(!result.IsSuccess || result.Value is null)
 		{
 			return MapTaskError(result.Error);
 		}
 
-		return Ok(result.Value.Select(ToCardDto).ToList());
-	}
-
-	[HttpGet("by-user/submitted")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskCardDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	public async Task<IActionResult> GetTasksByUserSubmittedAsync(
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		CancellationToken cancellationToken)
-	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null) return invalidActor;
-
-		var result = await _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword!, cancellationToken);
-		return result.IsSuccess && result.Value is not null
-			? Ok(result.Value.Select(ToCardDto).ToList())
-			: MapTaskError(result.Error);
-	}
-
-	[HttpGet("by-user/approved")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskCardDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	public async Task<IActionResult> GetTasksByUserApprovedAsync(
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		CancellationToken cancellationToken)
-	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null) return invalidActor;
-
-		var result = await _tasks.GetByUserApprovedAsync(actorUserId, actorUserPassword!, cancellationToken);
-		return result.IsSuccess && result.Value is not null
-			? Ok(result.Value.Select(ToCardDto).ToList())
-			: MapTaskError(result.Error);
-	}
-
-	[HttpGet("feed/by-admin")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskCardDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<IActionResult> GetAdminFeedAsync([FromQuery] Guid adminUserId, CancellationToken cancellationToken)
-	{
-		if(adminUserId == Guid.Empty)
-		{
-			var errors = new Dictionary<string, string[]>
-			{
-				["adminUserId"] = new[] { "AdminUserId is required." },
-			};
-
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				errors,
-				title: "Некорректный запрос.",
-				detail: "adminUserId обязателен.");
-		}
-
-		var tasks = await _tasks.GetByAdminAsync(adminUserId, cancellationToken);
-		return Ok(tasks.Select(ToCardDto).ToList());
+		var dtos = result.Value.Select(ToDto).ToList();
+		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
 	[HttpPost("{taskId:guid}/submit")]
@@ -678,6 +696,117 @@ public sealed class TasksController : ControllerBase
 				detail: $"Передайте actorUserId и заголовок {ActorPasswordHeader}.");
 	}
 
+	private IActionResult? TryBuildFeedFilterValidationProblem(int? regionId, int? cityId)
+	{
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(regionId is not null && regionId.Value <= 0)
+		{
+			errors["regionId"] = new[] { "RegionId must be positive." };
+		}
+
+		if(cityId is not null)
+		{
+			var list = new List<string>();
+
+			if(cityId.Value <= 0)
+			{
+				list.Add("CityId must be positive.");
+			}
+
+			if(regionId is null)
+			{
+				list.Add("cityId can be used only together with regionId.");
+			}
+
+			if(list.Count > 0)
+			{
+				errors["cityId"] = list.ToArray();
+			}
+		}
+
+		return errors.Count == 0
+			? null
+			: this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте параметры regionId и cityId (cityId допускается только вместе с regionId).");
+	}
+
+	private IActionResult? TryBuildFeedPaginationValidationProblem(int? start, int? end)
+	{
+		if(start is null && end is null)
+		{
+			return null;
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(start is null || end is null)
+		{
+			if(start is null)
+			{
+				errors["start"] = new[] { "Start is required when end is specified." };
+			}
+
+			if(end is null)
+			{
+				errors["end"] = new[] { "End is required when start is specified." };
+			}
+
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Параметры start и end должны быть указаны вместе.");
+		}
+
+		if(start.Value <= 0)
+		{
+			errors["start"] = new[] { "Start must be positive." };
+		}
+
+		if(end.Value <= 0)
+		{
+			errors["end"] = new[] { "End must be positive." };
+		}
+
+		if(errors.Count == 0 && end.Value < start.Value)
+		{
+			errors["end"] = new[] { "End must be greater or equal to start." };
+		}
+
+		return errors.Count == 0
+			? null
+			: this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте параметры start и end (нумерация с 1, end должен быть >= start).");
+	}
+
+	private static IReadOnlyList<T> ApplyFeedPagination<T>(IReadOnlyList<T> items, int? start, int? end)
+	{
+		if(start is null || end is null)
+		{
+			return items;
+		}
+
+		var skip = start.Value - 1;
+		var take = end.Value - start.Value + 1;
+
+		if(skip < 0 || take <= 0)
+		{
+			return Array.Empty<T>();
+		}
+
+		return items
+			.Skip(skip)
+			.Take(take)
+			.ToList();
+	}
+
 	private IActionResult? TryBuildValidationProblemIfInvalidModel()
 	{
 		if(ModelState.IsValid)
@@ -731,18 +860,6 @@ public sealed class TasksController : ControllerBase
 			t.RegionId,
 			t.CityId,
 			t.TrustedAdminIds);
-
-	private static TaskCardDto ToCardDto(TaskModel t)
-		=> new(
-			t.Id,
-			t.Title,
-			t.Description,
-			t.RewardPoints,
-			t.CoverImageId,
-			t.DeadlineAt,
-			t.Status,
-			t.RegionId,
-			t.CityId);
 
 	private static UserDto ToPublicDto(UserPublicModel u)
 		=> new(
