@@ -641,21 +641,44 @@ public sealed class UsersController : ControllerBase
 	}
 
 	[HttpGet("by-region/{regionId:int}")]
-	[ProducesResponseType(typeof(IReadOnlyList<UserFullNameDto>), StatusCodes.Status200OK)]
-	public async Task<ActionResult<IReadOnlyList<UserFullNameDto>>> GetByRegion(int regionId, CancellationToken cancellationToken)
+	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByRegion(
+		int regionId,
+		[FromQuery] int? start,
+		[FromQuery] int? end,
+		CancellationToken cancellationToken)
 	{
+		var invalidPagination = TryBuildUsersPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
 		var users = await _users.GetUsersByRegionAsync(regionId, cancellationToken);
-		var dto = users.Select(x => new UserFullNameDto(x.LastName, x.FirstName, x.MiddleName)).ToList();
-		return Ok(dto);
+		var dtos = users.Select(ToDto).ToList();
+		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
 
 	[HttpGet("by-city/{regionId:int}/{cityId:int}")]
-	[ProducesResponseType(typeof(IReadOnlyList<UserFullNameDto>), StatusCodes.Status200OK)]
-	public async Task<ActionResult<IReadOnlyList<UserFullNameDto>>> GetByCity(int regionId, int cityId, CancellationToken cancellationToken)
+	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByCity(
+		int regionId,
+		int cityId,
+		[FromQuery] int? start,
+		[FromQuery] int? end,
+		CancellationToken cancellationToken)
 	{
+		var invalidPagination = TryBuildUsersPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
 		var users = await _users.GetUsersByRegionAndCityAsync(regionId, cityId, cancellationToken);
-		var dto = users.Select(x => new UserFullNameDto(x.LastName, x.FirstName, x.MiddleName)).ToList();
-		return Ok(dto);
+		var dtos = users.Select(ToDto).ToList();
+		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
 
 	[HttpGet("{id:guid}/is-admin")]
@@ -675,24 +698,110 @@ public sealed class UsersController : ControllerBase
 
 	[HttpGet("admins")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
-	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetAdmins(CancellationToken cancellationToken)
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetAdmins(
+		[FromQuery] int? start,
+		[FromQuery] int? end,
+		CancellationToken cancellationToken)
 	{
-		var admins = await _users.GetAdminsAsync(cancellationToken);
+		var invalidPagination = TryBuildUsersPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var admins = await _users.GetAdminsAsync(start, end, cancellationToken);
 		return Ok(admins.Select(ToDto).ToList());
 	}
 
 	private static UserDto ToDto(UserPublicModel u) => new(
-		u.Id,
-		u.LastName,
-		u.FirstName,
-		u.MiddleName,
-		u.Gender,
-		u.PhoneNumber,
-		u.BirthDate,
-		u.RegionId,
-		u.CityId,
-		u.IsPhoneConfirmed,
-		u.Points);
+			u.Id,
+			u.LastName,
+			u.FirstName,
+			u.MiddleName,
+			u.Gender,
+			u.PhoneNumber,
+			u.BirthDate,
+			u.RegionId,
+			u.CityId,
+			u.IsPhoneConfirmed,
+			u.Points)
+	{
+		AvatarImageUrl = u.AvatarImageUrl,
+	};
+
+	private ActionResult? TryBuildUsersPaginationValidationProblem(int? start, int? end)
+	{
+		if(start is null && end is null)
+		{
+			return null;
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(start is null || end is null)
+		{
+			if(start is null)
+			{
+				errors["start"] = new[] { "Start is required when end is specified." };
+			}
+
+			if(end is null)
+			{
+				errors["end"] = new[] { "End is required when start is specified." };
+			}
+
+			return (ActionResult)this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Параметры start и end должны быть указаны вместе.");
+		}
+
+		if(start.Value <= 0)
+		{
+			errors["start"] = new[] { "Start must be positive." };
+		}
+
+		if(end.Value <= 0)
+		{
+			errors["end"] = new[] { "End must be positive." };
+		}
+
+		if(errors.Count == 0 && end.Value < start.Value)
+		{
+			errors["end"] = new[] { "End must be greater or equal to start." };
+		}
+
+		return errors.Count == 0
+			? null
+			: (ActionResult)this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте параметры start и end (нумерация с 1, end должен быть >= start).");
+	}
+
+	private static IReadOnlyList<T> ApplyUsersPagination<T>(IReadOnlyList<T> items, int? start, int? end)
+	{
+		if(start is null || end is null)
+		{
+			return items;
+		}
+
+		var skip = start.Value - 1;
+		var take = end.Value - start.Value + 1;
+
+		if(skip < 0 || take <= 0)
+		{
+			return Array.Empty<T>();
+		}
+
+		return items
+			.Skip(skip)
+			.Take(take)
+			.ToList();
+	}
 
 	public sealed class RegisterUserFormRequest
 	{

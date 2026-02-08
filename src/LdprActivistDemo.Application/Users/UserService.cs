@@ -106,38 +106,24 @@ public sealed class UserService : IUserService
 		return true;
 	}
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken) =>
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken) =>
 		_users.GetByRegionAsync(regionId, cancellationToken);
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken) =>
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken) =>
 		_users.GetByCityAsync(cityId, cancellationToken);
 
-	public Task<IReadOnlyList<UserFullNameModel>> GetUsersByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken) =>
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken) =>
 		_users.GetByRegionAndCityAsync(regionId, cityId, cancellationToken);
 
 	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken) =>
 		_users.IsAdminAsync(userId, cancellationToken);
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(CancellationToken cancellationToken)
-	{
-		var ids = await _users.GetAllAdminIdsAsync(cancellationToken);
-		if(ids.Count == 0)
-		{
-			return Array.Empty<UserPublicModel>();
-		}
+	public Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(CancellationToken cancellationToken) =>
+		GetAdminsAsync(start: null, end: null, cancellationToken);
 
-		var admins = await Task.WhenAll(
-			ids.Select(id => _users.GetPublicByIdAsync(id, cancellationToken)));
-
-		return admins
-			.Where(x => x is not null)
-			.Select(x => x!)
-			.OrderBy(x => x.LastName)
-			.ThenBy(x => x.FirstName)
-			.ThenBy(x => x.MiddleName)
-			.ToList();
-	}
+	public Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken) =>
+		_users.GetAdminsAsync(start, end, cancellationToken);
 
 	private static UserPublicModel ToPublic(UserInternalModel u) =>
-		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.Points);
+		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.Points, u.AvatarImageUrl);
 }

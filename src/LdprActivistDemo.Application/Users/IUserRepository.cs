@@ -26,12 +26,13 @@ public interface IUserRepository
 	Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken);
 	Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken);
 
-	Task<IReadOnlyList<UserFullNameModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserFullNameModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserFullNameModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken);
 
 	Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<Guid>> GetAllAdminIdsAsync(CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken);
 
 	Task<bool> AddPointsAsync(Guid userId, int pointsToAdd, CancellationToken cancellationToken);
 }

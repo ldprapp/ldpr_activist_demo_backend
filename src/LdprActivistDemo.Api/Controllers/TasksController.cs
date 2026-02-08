@@ -863,17 +863,20 @@ public sealed class TasksController : ControllerBase
 
 	private static UserDto ToPublicDto(UserPublicModel u)
 		=> new(
-			u.Id,
-			u.LastName,
-			u.FirstName,
-			u.MiddleName,
-			u.Gender,
-			u.PhoneNumber,
-			u.BirthDate,
-			u.RegionId,
-			u.CityId,
-			u.IsPhoneConfirmed,
-			u.Points);
+				u.Id,
+				u.LastName,
+				u.FirstName,
+				u.MiddleName,
+				u.Gender,
+				u.PhoneNumber,
+				u.BirthDate,
+				u.RegionId,
+				u.CityId,
+				u.IsPhoneConfirmed,
+				u.Points)
+		{
+			AvatarImageUrl = u.AvatarImageUrl,
+		};
 
 	private static SubmissionDto ToDto(TaskSubmissionModel s)
 		=> new(

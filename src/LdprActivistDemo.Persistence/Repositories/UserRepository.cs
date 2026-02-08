@@ -268,30 +268,66 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<IReadOnlyList<UserFullNameModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken)
 	{
 		return await _db.Users.AsNoTracking()
 			.Where(x => x.RegionId == regionId)
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserFullNameModel(x.Id, x.LastName, x.FirstName, x.MiddleName))
+			.Select(x => new UserPublicModel(
+				x.Id,
+				x.LastName,
+				x.FirstName,
+				x.MiddleName,
+				x.Gender,
+				x.PhoneNumber,
+				x.BirthDate,
+				x.RegionId,
+				x.CityId,
+				x.IsPhoneConfirmed,
+				x.Points,
+				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<UserFullNameModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken)
 	{
 		return await _db.Users.AsNoTracking()
 			.Where(x => x.CityId == cityId)
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserFullNameModel(x.Id, x.LastName, x.FirstName, x.MiddleName))
+			.Select(x => new UserPublicModel(
+				x.Id,
+				x.LastName,
+				x.FirstName,
+				x.MiddleName,
+				x.Gender,
+				x.PhoneNumber,
+				x.BirthDate,
+				x.RegionId,
+				x.CityId,
+				x.IsPhoneConfirmed,
+				x.Points,
+				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<UserFullNameModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
 	{
 		return await _db.Users.AsNoTracking()
 			.Where(x => x.RegionId == regionId && x.CityId == cityId)
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserFullNameModel(x.Id, x.LastName, x.FirstName, x.MiddleName))
+			.Select(x => new UserPublicModel(
+				x.Id,
+				x.LastName,
+				x.FirstName,
+				x.MiddleName,
+				x.Gender,
+				x.PhoneNumber,
+				x.BirthDate,
+				x.RegionId,
+				x.CityId,
+				x.IsPhoneConfirmed,
+				x.Points,
+				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
 
@@ -303,6 +339,41 @@ public sealed class UserRepository : IUserRepository
 		return await _db.Users.AsNoTracking()
 			.Where(x => x.IsAdmin)
 			.Select(x => x.Id)
+			.ToListAsync(cancellationToken);
+	}
+
+	public async Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken)
+	{
+		IQueryable<User> query = _db.Users.AsNoTracking()
+			.Where(x => x.IsAdmin)
+			.OrderBy(x => x.LastName)
+			.ThenBy(x => x.FirstName)
+			.ThenBy(x => x.MiddleName);
+
+		if(start is not null && end is not null)
+		{
+			var skip = start.Value - 1;
+			var take = end.Value - start.Value + 1;
+
+			query = query
+				.Skip(skip)
+				.Take(take);
+		}
+
+		return await query
+			.Select(u => new UserPublicModel(
+				u.Id,
+				u.LastName,
+				u.FirstName,
+				u.MiddleName,
+				u.Gender,
+				u.PhoneNumber,
+				u.BirthDate,
+				u.RegionId,
+				u.CityId,
+				u.IsPhoneConfirmed,
+				u.Points,
+				u.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
 
@@ -356,7 +427,8 @@ public sealed class UserRepository : IUserRepository
 			u.CityId,
 			u.IsAdmin,
 			u.IsPhoneConfirmed,
-			u.Points);
+			u.Points,
+			u.AvatarImageUrl);
 
 	private static UserPublicModel ToPublic(User u)
 		=> new(
@@ -370,5 +442,6 @@ public sealed class UserRepository : IUserRepository
 			u.RegionId,
 			u.CityId,
 			u.IsPhoneConfirmed,
-			u.Points);
+			u.Points,
+			u.AvatarImageUrl);
 }
