@@ -29,6 +29,102 @@ public sealed class TasksController : ControllerBase
 		_images = images;
 	}
 
+	public enum TaskFeedSort
+	{
+		None = 0,
+		PublishedNewest = 1,
+		PublishedOldest = 2,
+		DeadlineSoonest = 3,
+		DeadlineLatest = 4,
+	}
+
+	private static DateTimeOffset? GetDeadline(TaskModel t) => t.DeadlineAt;
+
+	private static bool IsDeadlineExpired(TaskModel t, DateTimeOffset nowUtc)
+	{
+		var d = GetDeadline(t);
+		return d.HasValue && d.Value < nowUtc;
+	}
+
+	private static IReadOnlyList<TaskModel> ApplyDeadlineVisibilityAndSorting(
+		IEnumerable<TaskModel> tasks,
+		TaskFeedSort sort,
+		bool includeExpiredDeadlines,
+		DateTimeOffset nowUtc)
+	{
+		var list = tasks.ToList();
+
+		if(!includeExpiredDeadlines)
+		{
+			list = list.Where(t => !IsDeadlineExpired(t, nowUtc)).ToList();
+		}
+
+		switch(sort)
+		{
+			case TaskFeedSort.PublishedNewest:
+				return list
+					.OrderByDescending(t => t.PublishedAt)
+					.ThenBy(t => t.Id)
+					.ToList();
+
+			case TaskFeedSort.PublishedOldest:
+				return list
+					.OrderBy(t => t.PublishedAt)
+					.ThenBy(t => t.Id)
+					.ToList();
+
+			case TaskFeedSort.DeadlineSoonest:
+				{
+					var upcoming = list
+						.Where(t => !IsDeadlineExpired(t, nowUtc))
+						.OrderBy(t => GetDeadline(t) ?? DateTimeOffset.MaxValue)
+						.ThenBy(t => t.Id)
+						.ToList();
+
+					if(!includeExpiredDeadlines)
+					{
+						return upcoming;
+					}
+
+					var expired = list
+						.Where(t => IsDeadlineExpired(t, nowUtc))
+						.OrderBy(t => GetDeadline(t) ?? DateTimeOffset.MaxValue)
+						.ThenBy(t => t.Id)
+						.ToList();
+
+					upcoming.AddRange(expired);
+					return upcoming;
+				}
+
+			case TaskFeedSort.DeadlineLatest:
+				{
+					var upcoming = list
+						.Where(t => !IsDeadlineExpired(t, nowUtc))
+						.OrderByDescending(t => GetDeadline(t) ?? DateTimeOffset.MinValue)
+						.ThenBy(t => t.Id)
+						.ToList();
+
+					if(!includeExpiredDeadlines)
+					{
+						return upcoming;
+					}
+
+					var expired = list
+						.Where(t => IsDeadlineExpired(t, nowUtc))
+						.OrderByDescending(t => GetDeadline(t) ?? DateTimeOffset.MinValue)
+						.ThenBy(t => t.Id)
+						.ToList();
+
+					upcoming.AddRange(expired);
+					return upcoming;
+				}
+
+			case TaskFeedSort.None:
+			default:
+				return list;
+		}
+	}
+
 	[HttpPost]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(CreateTaskResponse), StatusCodes.Status201Created)]
@@ -224,17 +320,25 @@ public sealed class TasksController : ControllerBase
 	public async Task<IActionResult> GetAdminFeedAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromQuery] bool onlyMine,
-		[FromQuery] int? regionId,
-		[FromQuery] int? cityId,
-		[FromQuery] int? start,
-		[FromQuery] int? end,
-		CancellationToken cancellationToken)
+		[FromQuery] bool onlyMine = true,
+		[FromQuery] int? regionId = null,
+		[FromQuery] int? cityId = null,
+		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
+		[FromQuery] bool includeExpiredDeadlines = false,
+		[FromQuery] int? start = null,
+		[FromQuery] int? end = null,
+		CancellationToken cancellationToken = default)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
 		if(invalidActor is not null)
 		{
 			return invalidActor;
+		}
+
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null)
+		{
+			return invalid;
 		}
 
 		var invalidFilters = TryBuildFeedFilterValidationProblem(regionId, cityId);
@@ -255,76 +359,49 @@ public sealed class TasksController : ControllerBase
 			return MapTaskError(probe.Error);
 		}
 
+		IEnumerable<TaskModel> tasks;
+
 		if(onlyMine)
 		{
-			var tasks = await _tasks.GetByAdminAsync(actorUserId, cancellationToken);
-
-			IEnumerable<TaskModel> filtered = tasks;
-			if(regionId is not null)
-			{
-				filtered = cityId is null
-					? filtered.Where(t => t.RegionId == regionId.Value)
-					: filtered.Where(t => t.RegionId == regionId.Value && t.CityId == cityId.Value);
-			}
-
-			var onlyMineDtos = filtered.Select(ToDto).ToList();
-			return Ok(ApplyFeedPagination(onlyMineDtos, start, end));
+			tasks = await _tasks.GetByAdminAsync(actorUserId, cancellationToken);
 		}
-
-		if(regionId is not null)
+		else if(regionId is not null)
 		{
-			var tasks = cityId is null
+			tasks = cityId is null
 				? await _tasks.GetByRegionAsync(regionId.Value, cancellationToken)
 				: await _tasks.GetByRegionAndCityAsync(regionId.Value, cityId.Value, cancellationToken);
-
-			var regionDtos = tasks.Select(ToDto).ToList();
-			return Ok(ApplyFeedPagination(regionDtos, start, end));
 		}
-
-		var taskIds = await _taskFeed.GetAllTaskIdsAsync(cancellationToken);
-		if(start is null || end is null)
+		else
 		{
-			var allDtos = new List<TaskDto>(taskIds.Count);
+			var taskIds = await _taskFeed.GetAllTaskIdsAsync(cancellationToken);
+			var list = new List<TaskModel>(taskIds.Count);
 
 			for(var i = 0; i < taskIds.Count; i++)
 			{
 				var r = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
 				if(r.IsSuccess && r.Value is not null)
 				{
-					allDtos.Add(ToDto(r.Value));
+					list.Add(r.Value);
 				}
 			}
 
-			return Ok(allDtos);
+			tasks = list;
 		}
 
-		var pagedDtos = new List<TaskDto>(end.Value - start.Value + 1);
-		var returnedIndex = 0;
+		IEnumerable<TaskModel> filtered = tasks;
 
-		for(var i = 0; i < taskIds.Count; i++)
+		if(regionId is not null)
 		{
-			var r = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
-			if(!r.IsSuccess || r.Value is null)
-			{
-				continue;
-			}
-
-			returnedIndex++;
-
-			if(returnedIndex < start.Value)
-			{
-				continue;
-			}
-
-			if(returnedIndex > end.Value)
-			{
-				break;
-			}
-
-			pagedDtos.Add(ToDto(r.Value));
+			filtered = cityId is null
+				? filtered.Where(t => t.RegionId == regionId.Value)
+				: filtered.Where(t => t.RegionId == regionId.Value && t.CityId == cityId.Value);
 		}
 
-		return Ok(pagedDtos);
+		var nowUtc = DateTimeOffset.UtcNow;
+		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
+
+		var dtos = ordered.Select(ToDto).ToList();
+		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
 	[HttpGet("feed/user")]
@@ -335,14 +412,22 @@ public sealed class TasksController : ControllerBase
 	public async Task<IActionResult> GetUserFeedAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromQuery] int? start,
-		[FromQuery] int? end,
-		CancellationToken cancellationToken)
+		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
+		[FromQuery] bool includeExpiredDeadlines = false,
+		[FromQuery] int? start = null,
+		[FromQuery] int? end = null,
+		CancellationToken cancellationToken = default)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
 		if(invalidActor is not null)
 		{
 			return invalidActor;
+		}
+
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null)
+		{
+			return invalid;
 		}
 
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
@@ -363,7 +448,12 @@ public sealed class TasksController : ControllerBase
 			return MapTaskError(result.Error);
 		}
 
-		var dtos = result.Value.Select(ToDto).ToList();
+		IEnumerable<TaskModel> filtered = result.Value;
+
+		var nowUtc = DateTimeOffset.UtcNow;
+		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
+
+		var dtos = ordered.Select(ToDto).ToList();
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
