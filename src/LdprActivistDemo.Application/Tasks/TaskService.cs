@@ -14,6 +14,9 @@ public sealed class TaskService : ITaskService
 		_submissions = submissions;
 	}
 
+	public Task<TaskOperationResult> ValidateActorAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+		=> _submissions.ValidateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+
 	public Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
 		=> _tasks.CreateAsync(actorUserId, actorUserPassword, model, cancellationToken);
 
@@ -57,6 +60,9 @@ public sealed class TaskService : ITaskService
 
 	public Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 		=> _submissions.UpdateSubmissionAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
+
+	public Task<TaskOperationResult> DeleteSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _submissions.DeleteSubmissionAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 
 	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 		=> _submissions.GetSubmittedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);

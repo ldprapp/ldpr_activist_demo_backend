@@ -11,7 +11,7 @@ public sealed record UpdateTaskRequest(
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
-	TaskStatus Status,
+	string Status,
 	[Range(1, int.MaxValue)] int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid>? TrustedAdminIds);

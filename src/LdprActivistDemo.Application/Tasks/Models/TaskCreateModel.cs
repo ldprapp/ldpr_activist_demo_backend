@@ -1,6 +1,4 @@
-﻿using TaskStatus = LdprActivistDemo.Contracts.Tasks.TaskStatus;
-
-namespace LdprActivistDemo.Application.Tasks.Models;
+﻿namespace LdprActivistDemo.Application.Tasks.Models;
 
 public sealed record TaskCreateModel(
 	string Title,
@@ -11,7 +9,7 @@ public sealed record TaskCreateModel(
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
-	TaskStatus Status,
+	string Status,
 	int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid> TrustedAdminIds);

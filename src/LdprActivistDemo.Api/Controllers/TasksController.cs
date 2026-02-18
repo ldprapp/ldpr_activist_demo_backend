@@ -10,6 +10,8 @@ using LdprActivistDemo.Contracts.Users;
 
 using Microsoft.AspNetCore.Mvc;
 
+using TaskStatus = LdprActivistDemo.Contracts.Tasks.TaskStatus;
+
 namespace LdprActivistDemo.Api.Controllers;
 
 [ApiController]
@@ -150,6 +152,18 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		if(!TryNormalizeTaskStatus(request.Status, out var normalizedStatus, out var statusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["status"] = new[] { statusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Поле status допускает только значения 'open' или 'closed'.");
+		}
+
 		Guid? coverImageId = null;
 		if(request.CoverImage is not null)
 		{
@@ -168,6 +182,8 @@ public sealed class TasksController : ControllerBase
 			coverImageId = await _images.CreateAsync(img, cancellationToken);
 		}
 
+		var publishedAt = DateTimeOffset.UtcNow;
+
 		var model = new TaskCreateModel(
 			request.Title,
 			request.Description,
@@ -175,9 +191,9 @@ public sealed class TasksController : ControllerBase
 			request.RewardPoints,
 			coverImageId,
 			request.ExecutionLocation,
-			request.PublishedAt,
+			publishedAt,
 			request.DeadlineAt,
-			request.Status,
+			normalizedStatus,
 			request.RegionId,
 			request.CityId,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
@@ -217,6 +233,18 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		if(!TryNormalizeTaskStatus(request.Status, out var normalizedStatus, out var statusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["status"] = new[] { statusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Поле status допускает только значения 'open' или 'closed'.");
+		}
+
 		Guid? coverImageId = null;
 		if(request.CoverImage is not null)
 		{
@@ -235,6 +263,8 @@ public sealed class TasksController : ControllerBase
 			coverImageId = await _images.CreateAsync(img, cancellationToken);
 		}
 
+		var publishedAt = DateTimeOffset.UtcNow;
+
 		var model = new TaskUpdateModel(
 			request.Title,
 			request.Description,
@@ -242,9 +272,9 @@ public sealed class TasksController : ControllerBase
 			request.RewardPoints,
 			coverImageId,
 			request.ExecutionLocation,
-			request.PublishedAt,
+			publishedAt,
 			request.DeadlineAt,
-			request.Status,
+			normalizedStatus,
 			request.RegionId,
 			request.CityId,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
@@ -353,10 +383,10 @@ public sealed class TasksController : ControllerBase
 			return invalidPagination;
 		}
 
-		var probe = await _tasks.DeleteAsync(actorUserId, actorUserPassword!, Guid.NewGuid(), cancellationToken);
-		if(!probe.IsSuccess && (probe.Error == TaskOperationError.InvalidCredentials || probe.Error == TaskOperationError.Forbidden))
+		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!auth.IsSuccess)
 		{
-			return MapTaskError(probe.Error);
+			return MapTaskError(auth.Error);
 		}
 
 		IEnumerable<TaskModel> tasks;
@@ -436,7 +466,7 @@ public sealed class TasksController : ControllerBase
 			return invalidPagination;
 		}
 
-		var auth = await _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword!, cancellationToken);
+		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
 		if(!auth.IsSuccess)
 		{
 			return MapTaskError(auth.Error);
@@ -509,9 +539,7 @@ public sealed class TasksController : ControllerBase
 		var model = new TaskSubmissionCreateModel(
 			PhotoImageIds: photoImageIds,
 			ProofText: request.ProofText,
-			SubmittedAt: request.SubmittedAt == default
-				? DateTimeOffset.UtcNow
-				: request.SubmittedAt);
+			SubmittedAt: DateTimeOffset.UtcNow);
 
 		var result = await _tasks.SubmitAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
 		if(!result.IsSuccess)
@@ -522,7 +550,30 @@ public sealed class TasksController : ControllerBase
 		return StatusCode(StatusCodes.Status201Created);
 	}
 
-	[HttpPut("{taskId:guid}/submission")]
+	[HttpDelete("{taskId:guid}/submit")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> DeleteSubmissionAsync(
+		[FromRoute] Guid taskId,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null) return invalidActor;
+
+		var result = await _tasks.DeleteSubmissionAsync(
+			actorUserId,
+			actorUserPassword!,
+			taskId,
+			cancellationToken);
+
+		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
+	}
+
+	[HttpPut("{taskId:guid}/submit")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -571,57 +622,13 @@ public sealed class TasksController : ControllerBase
 		var model = new TaskSubmissionCreateModel(
 			PhotoImageIds: photoImageIds,
 			ProofText: request.ProofText,
-			SubmittedAt: request.SubmittedAt == default ? DateTimeOffset.UtcNow : request.SubmittedAt);
+			SubmittedAt: DateTimeOffset.UtcNow);
 
 		var result = await _tasks.UpdateSubmissionAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	public sealed class CreateTaskFormRequest
-	{
-		public string Title { get; set; } = string.Empty;
-		public string Description { get; set; } = string.Empty;
-		public string? RequirementsText { get; set; }
-		public int RewardPoints { get; set; }
-
-		public IFormFile? CoverImage { get; set; }
-
-		public string? ExecutionLocation { get; set; }
-		public DateTimeOffset PublishedAt { get; set; }
-		public DateTimeOffset? DeadlineAt { get; set; }
-		public LdprActivistDemo.Contracts.Tasks.TaskStatus Status { get; set; }
-		public int RegionId { get; set; }
-		public int? CityId { get; set; }
-		public List<Guid>? TrustedAdminIds { get; set; }
-	}
-
-	public sealed class UpdateTaskFormRequest
-	{
-		public string Title { get; set; } = string.Empty;
-		public string Description { get; set; } = string.Empty;
-		public string? RequirementsText { get; set; }
-		public int RewardPoints { get; set; }
-
-		public IFormFile? CoverImage { get; set; }
-
-		public string? ExecutionLocation { get; set; }
-		public DateTimeOffset PublishedAt { get; set; }
-		public DateTimeOffset? DeadlineAt { get; set; }
-		public LdprActivistDemo.Contracts.Tasks.TaskStatus Status { get; set; }
-		public int RegionId { get; set; }
-		public int? CityId { get; set; }
-		public List<Guid>? TrustedAdminIds { get; set; }
-	}
-
-	public sealed class SubmitTaskFormRequest
-	{
-		public DateTimeOffset SubmittedAt { get; set; }
-		public string? ProofText { get; set; }
-
-		public List<IFormFile>? Photos { get; set; }
-	}
-
-	[HttpGet("{taskId:guid}/submitted")]
+	[HttpGet("{taskId:guid}/submit")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -644,7 +651,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(result.Value.Select(ToPublicDto).ToList());
 	}
 
-	[HttpGet("{taskId:guid}/approved")]
+	[HttpGet("{taskId:guid}/approve")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -667,7 +674,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(result.Value.Select(ToPublicDto).ToList());
 	}
 
-	[HttpGet("{taskId:guid}/submitted/{userId:guid}")]
+	[HttpGet("{taskId:guid}/submit/{userId:guid}")]
 	[ProducesResponseType(typeof(SubmissionUserViewDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -727,7 +734,7 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpPost("{taskId:guid}/rejected")]
+	[HttpPost("{taskId:guid}/reject")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -761,6 +768,46 @@ public sealed class TasksController : ControllerBase
 
 		var result = await _tasks.RejectAsync(actorUserId, actorUserPassword!, taskId, userId, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
+	}
+
+	public sealed class CreateTaskFormRequest
+	{
+		public string Title { get; set; } = string.Empty;
+		public string Description { get; set; } = string.Empty;
+		public string? RequirementsText { get; set; }
+		public int RewardPoints { get; set; }
+
+		public IFormFile? CoverImage { get; set; }
+
+		public string? ExecutionLocation { get; set; }
+		public DateTimeOffset? DeadlineAt { get; set; }
+		public string Status { get; set; } = TaskStatus.Open;
+		public int RegionId { get; set; }
+		public int? CityId { get; set; }
+		public List<Guid>? TrustedAdminIds { get; set; }
+	}
+
+	public sealed class UpdateTaskFormRequest
+	{
+		public string Title { get; set; } = string.Empty;
+		public string Description { get; set; } = string.Empty;
+		public string? RequirementsText { get; set; }
+		public int RewardPoints { get; set; }
+
+		public IFormFile? CoverImage { get; set; }
+
+		public string? ExecutionLocation { get; set; }
+		public DateTimeOffset? DeadlineAt { get; set; }
+		public string Status { get; set; } = TaskStatus.Open;
+		public int RegionId { get; set; }
+		public int? CityId { get; set; }
+		public List<Guid>? TrustedAdminIds { get; set; }
+	}
+
+	public sealed class SubmitTaskFormRequest
+	{
+		public string? ProofText { get; set; }
+		public List<IFormFile>? Photos { get; set; }
 	}
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
@@ -897,6 +944,37 @@ public sealed class TasksController : ControllerBase
 			.ToList();
 	}
 
+	private static bool TryNormalizeTaskStatus(string? raw, out string normalized, out string? error)
+	{
+		error = null;
+		normalized = TaskStatus.Open;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, TaskStatus.Open, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskStatus.Open;
+			return true;
+		}
+
+		if(string.Equals(raw, TaskStatus.Closed, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskStatus.Closed;
+			return true;
+		}
+
+		error = "Status must be 'open' or 'closed'.";
+		return false;
+	}
+
 	private IActionResult? TryBuildValidationProblemIfInvalidModel()
 	{
 		if(ModelState.IsValid)
@@ -928,7 +1006,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.CityRegionMismatch => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Город не принадлежит региону.", "Указанный город должен относиться к указанному региону."),
 			TaskOperationError.TaskClosed => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskClosed, "Задача закрыта.", "Операция недоступна для закрытой задачи."),
 			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя изменять подтверждённую заявку."),
-			TaskOperationError.SubmissionAlreadyExists => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskSubmissionExists, "Заявка уже существует.", "Повторная отправка запрещена. Используйте PUT /api/v1/tasks/{taskId}/submission для редактирования (пока заявка не подтверждена)."),
+			TaskOperationError.SubmissionAlreadyExists => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskSubmissionExists, "Заявка уже существует.", "Повторная отправка запрещена."),
 			TaskOperationError.SubmissionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskSubmissionNotFound, "Заявка не найдена."),
 			TaskOperationError.UserNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.", "Пользователь не существует или один из TrustedAdminIds не является администратором."),
 			_ => this.ProblemWithCode(StatusCodes.Status500InternalServerError, ApiErrorCodes.InternalError, "Внутренняя ошибка."),
@@ -946,7 +1024,7 @@ public sealed class TasksController : ControllerBase
 			t.ExecutionLocation,
 			t.PublishedAt,
 			t.DeadlineAt,
-			t.Status,
+			t.Status.ToString(),
 			t.RegionId,
 			t.CityId,
 			t.TrustedAdminIds);

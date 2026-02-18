@@ -2,7 +2,6 @@
 using LdprActivistDemo.Application.Tasks.Models;
 using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
-using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -24,6 +23,17 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		_users = users;
 		_passwordHasher = passwordHasher;
 		_logger = logger;
+	}
+
+	public async Task<TaskOperationResult> ValidateActorAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		return ok
+			? TaskOperationResult.Success()
+			: TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
 	}
 
 	public async Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
@@ -48,40 +58,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskClosed);
 		}
 
-		var actorLocation = await _db.Users.AsNoTracking()
-			.Where(x => x.Id == actorUserId)
-			.Select(x => new { x.RegionId, x.CityId })
-			.FirstOrDefaultAsync(cancellationToken);
-
-		if(actorLocation is null)
-		{
-			_logger.LogWarning("SubmitTask rejected: actor not found after credentials validation. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
-			return TaskSubmitOperationResult.Fail(TaskOperationError.InvalidCredentials);
-		}
-
-		var isAvailableForUser = actorLocation.RegionId == task.RegionId
-			&& (task.CityId is null || actorLocation.CityId == task.CityId);
-
-		if(!isAvailableForUser)
-		{
-			_logger.LogWarning(
-				"SubmitTask rejected: task not available for user location. ActorUserId={ActorUserId}, TaskId={TaskId}, UserRegionId={UserRegionId}, UserCityId={UserCityId}, TaskRegionId={TaskRegionId}, TaskCityId={TaskCityId}.",
-				actorUserId,
-				taskId,
-				actorLocation.RegionId,
-				actorLocation.CityId,
-				task.RegionId,
-				task.CityId);
-			return TaskSubmitOperationResult.Fail(TaskOperationError.Forbidden);
-		}
-
 		var existing = await _db.TaskSubmissions
 		   .AsNoTracking()
 		   .FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
 
 		if(existing is not null)
 		{
-			return TaskSubmitOperationResult.Fail(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve
+			return TaskSubmitOperationResult.Fail(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve
 				? TaskOperationError.AlreadySubmitted
 				: TaskOperationError.SubmissionAlreadyExists);
 		}
@@ -131,6 +114,47 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskSubmitOperationResult.Created();
 	}
 
+	public async Task<TaskOperationResult> DeleteSubmissionAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid taskId,
+		CancellationToken cancellationToken)
+	{
+		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!ok)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
+		}
+
+		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
+		if(task is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
+		}
+
+		if(task.Status == TaskStatus.Closed)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
+		}
+
+		var existing = await _db.TaskSubmissions
+			.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
+		if(existing is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		if(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
+		}
+
+		_db.TaskSubmissions.Remove(existing);
+		await _db.SaveChangesAsync(cancellationToken);
+
+		return TaskOperationResult.Success();
+	}
+
 	public async Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
 		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
@@ -155,7 +179,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
-		if(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
+		if(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
 		}
@@ -197,11 +221,16 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(newPhotoIds is not null)
 		{
-			await _db.TaskSubmissionImages
-				.Where(x => x.SubmissionId == existing.Id)
-				.ExecuteDeleteAsync(cancellationToken);
+			var removed = oldPhotoIds!.Except(newPhotoIds).ToArray();
+			if(removed.Length > 0)
+			{
+				await _db.TaskSubmissionImages
+					.Where(x => x.SubmissionId == existing.Id && removed.Contains(x.ImageId))
+					.ExecuteDeleteAsync(cancellationToken);
+			}
 
-			foreach(var imageId in newPhotoIds)
+			var added = newPhotoIds.Except(oldPhotoIds!).ToArray();
+			foreach(var imageId in added)
 			{
 				_db.TaskSubmissionImages.Add(new TaskSubmissionImage
 				{
@@ -212,15 +241,6 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		await _db.SaveChangesAsync(cancellationToken);
-
-		if(oldPhotoIds is not null && newPhotoIds is not null)
-		{
-			var removed = oldPhotoIds.Except(newPhotoIds).ToArray();
-			if(removed.Length > 0)
-			{
-				await ImageGcHelpers.DeleteOrphanManyAsync(_db, removed, cancellationToken);
-			}
-		}
 
 		return TaskOperationResult.Success();
 	}
@@ -237,7 +257,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		var list = await _db.TaskSubmissions.AsNoTracking()
 			.Where(x => x.TaskId == taskId
 				&& (x.DecisionStatus == null
-					|| x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Rejected))
+					|| x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Rejected))
 			.Join(_db.Users.AsNoTracking(),
 				s => s.UserId,
 				u => u.Id,
@@ -275,7 +295,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		var list = await _db.TaskSubmissions.AsNoTracking()
 			.Where(x => x.TaskId == taskId
-				&& x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
+				&& x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
 			.Join(_db.Users.AsNoTracking(),
 				s => s.UserId,
 				u => u.Id,
@@ -359,12 +379,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
-		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
+		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
 		}
 
-		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve;
+		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve;
 		submission.DecidedByAdminId = actorUserId;
 		submission.DecidedAt = decidedAt;
 		await _db.SaveChangesAsync(cancellationToken);
@@ -386,12 +406,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
 
-		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Approve)
+		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
 		}
 
-		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatuses.Rejected;
+		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Rejected;
 		submission.DecidedByAdminId = actorUserId;
 		submission.DecidedAt = decidedAt;
 		await _db.SaveChangesAsync(cancellationToken);

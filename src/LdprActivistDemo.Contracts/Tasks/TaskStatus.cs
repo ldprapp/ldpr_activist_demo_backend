@@ -1,8 +1,7 @@
 ﻿namespace LdprActivistDemo.Contracts.Tasks;
 
-public enum TaskStatus
+public static class TaskStatus
 {
-	Open = 0,
-	InProgress = 1,
-	Closed = 2,
+	public const string Open = "open";
+	public const string Closed = "closed";
 }

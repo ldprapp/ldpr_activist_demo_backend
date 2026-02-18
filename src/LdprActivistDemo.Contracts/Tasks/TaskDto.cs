@@ -11,7 +11,7 @@ public sealed record TaskDto(
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
-	TaskStatus Status,
+	string Status,
 	int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid> TrustedAdminIds);

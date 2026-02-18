@@ -1,4 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using LdprActivistDemo.Contracts.Tasks;
+
+using Microsoft.EntityFrameworkCore;
+
+using TaskStatusValues = LdprActivistDemo.Contracts.Tasks.TaskStatus;
 
 namespace LdprActivistDemo.Persistence;
 
@@ -89,7 +93,16 @@ public sealed class AppDbContext : DbContext
 
 		modelBuilder.Entity<TaskEntity>(b =>
 		{
-			b.ToTable("tasks", t => t.HasCheckConstraint("ck_tasks_reward_non_negative", "\"RewardPoints\" >= 0"));
+			b.ToTable("tasks", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_tasks_reward_non_negative",
+					"\"RewardPoints\" >= 0");
+
+				t.HasCheckConstraint(
+					"ck_tasks_status_allowed",
+					$"\"Status\" IN ('{TaskStatusValues.Open}','{TaskStatusValues.Closed}')");
+			});
 			b.HasKey(x => x.Id);
 
 			b.Property(x => x.Title).IsRequired();
@@ -97,6 +110,8 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.RequirementsText).IsRequired();
 
 			b.Property(x => x.RewardPoints).IsRequired();
+
+			b.Property(x => x.Status).IsRequired();
 
 			b.Property(x => x.CoverImageId);
 			b.HasOne<ImageEntity>()
@@ -144,9 +159,12 @@ public sealed class AppDbContext : DbContext
 			{
 				t.HasCheckConstraint(
 					"ck_task_submissions_decision_status_allowed",
-					"\"DecisionStatus\" IS NULL OR \"DecisionStatus\" IN ('approve','rejected')");
+					$"\"DecisionStatus\" IS NULL OR \"DecisionStatus\" IN ('{TaskSubmissionDecisionStatus.InProgress}','{TaskSubmissionDecisionStatus.Approve}','{TaskSubmissionDecisionStatus.Rejected}')");
 			});
 			b.HasKey(x => x.Id);
+
+			b.Property(x => x.DecisionStatus)
+				.HasDefaultValue(TaskSubmissionDecisionStatus.InProgress);
 
 			b.HasIndex(x => new { x.TaskId, x.UserId }).IsUnique();
 

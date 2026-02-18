@@ -26,7 +26,7 @@ public sealed class TaskEntity
 
 	public DateTimeOffset DeadlineAt { get; set; }
 
-	public TaskStatus Status { get; set; }
+	public string Status { get; set; } = TaskStatus.Open;
 
 	public int RegionId { get; set; }
 
