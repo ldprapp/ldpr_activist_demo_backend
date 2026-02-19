@@ -14,6 +14,7 @@ public interface ITaskService
 		TaskUpdateModel model,
 		CancellationToken cancellationToken);
 	Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken);
+	Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken);

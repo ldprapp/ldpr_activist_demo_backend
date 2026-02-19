@@ -326,6 +326,27 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	[HttpPost("{taskId:guid}/open")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<IActionResult> OpenAsync(
+		[FromRoute] Guid taskId,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var result = await _tasks.OpenAsync(actorUserId, actorUserPassword!, taskId, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
+	}
+
 	[HttpGet("{taskId:guid}")]
 	[ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -353,6 +374,7 @@ public sealed class TasksController : ControllerBase
 		[FromQuery] bool onlyMine = true,
 		[FromQuery] int? regionId = null,
 		[FromQuery] int? cityId = null,
+		[FromQuery] string? status = null,
 		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
 		[FromQuery] bool includeExpiredDeadlines = false,
 		[FromQuery] int? start = null,
@@ -375,6 +397,18 @@ public sealed class TasksController : ControllerBase
 		if(invalidFilters is not null)
 		{
 			return invalidFilters;
+		}
+
+		if(!TryNormalizeTaskStatusFilter(status, out var normalizedStatusFilter, out var statusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["status"] = new[] { statusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр status допускает только значения 'open' или 'closed' (или пустое значение, чтобы не фильтровать).");
 		}
 
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
@@ -425,6 +459,14 @@ public sealed class TasksController : ControllerBase
 			filtered = cityId is null
 				? filtered.Where(t => t.RegionId == regionId.Value)
 				: filtered.Where(t => t.RegionId == regionId.Value && t.CityId == cityId.Value);
+		}
+
+		if(normalizedStatusFilter is not null)
+		{
+			filtered = filtered.Where(t => string.Equals(
+				NormalizeTaskStatusForContract(t),
+				normalizedStatusFilter,
+				StringComparison.Ordinal));
 		}
 
 		var nowUtc = DateTimeOffset.UtcNow;
@@ -479,6 +521,11 @@ public sealed class TasksController : ControllerBase
 		}
 
 		IEnumerable<TaskModel> filtered = result.Value;
+
+		filtered = filtered.Where(t => string.Equals(
+			NormalizeTaskStatusForContract(t),
+			TaskStatus.Open,
+			StringComparison.Ordinal));
 
 		var nowUtc = DateTimeOffset.UtcNow;
 		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
@@ -944,6 +991,37 @@ public sealed class TasksController : ControllerBase
 			.ToList();
 	}
 
+	private static bool TryNormalizeTaskStatusFilter(string? raw, out string? normalized, out string? error)
+	{
+		error = null;
+		normalized = null;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, TaskStatus.Open, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskStatus.Open;
+			return true;
+		}
+
+		if(string.Equals(raw, TaskStatus.Closed, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskStatus.Closed;
+			return true;
+		}
+
+		error = "Status must be 'open' or 'closed' (or be empty).";
+		return false;
+	}
+
 	private static bool TryNormalizeTaskStatus(string? raw, out string normalized, out string? error)
 	{
 		error = null;
@@ -973,6 +1051,23 @@ public sealed class TasksController : ControllerBase
 
 		error = "Status must be 'open' or 'closed'.";
 		return false;
+	}
+
+	private static string NormalizeTaskStatusForContract(TaskModel t)
+	{
+		var s = t.Status.ToString();
+
+		if(string.Equals(s, TaskStatus.Open, StringComparison.OrdinalIgnoreCase))
+		{
+			return TaskStatus.Open;
+		}
+
+		if(string.Equals(s, TaskStatus.Closed, StringComparison.OrdinalIgnoreCase))
+		{
+			return TaskStatus.Closed;
+		}
+
+		return s;
 	}
 
 	private IActionResult? TryBuildValidationProblemIfInvalidModel()
@@ -1024,7 +1119,7 @@ public sealed class TasksController : ControllerBase
 			t.ExecutionLocation,
 			t.PublishedAt,
 			t.DeadlineAt,
-			t.Status.ToString(),
+			NormalizeTaskStatusForContract(t),
 			t.RegionId,
 			t.CityId,
 			t.TrustedAdminIds);

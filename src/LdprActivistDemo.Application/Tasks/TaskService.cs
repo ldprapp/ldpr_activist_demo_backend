@@ -31,6 +31,9 @@ public sealed class TaskService : ITaskService
 	public Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 		=> _tasks.DeleteAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 
+	public Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+		=> _tasks.OpenAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+
 	public Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 		=> _tasks.CloseAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 

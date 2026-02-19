@@ -287,6 +287,38 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
+	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
+
+		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		{
+			_logger.LogWarning("OpenTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
+		}
+
+		var task = await _db.Tasks.FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
+		if(task is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
+		}
+
+		if(task.AuthorUserId != actorUserId)
+		{
+			_logger.LogWarning("OpenTask rejected: actor is not author. ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}.", actorUserId, taskId, task.AuthorUserId);
+			return TaskOperationResult.Fail(TaskOperationError.Forbidden);
+		}
+
+		if(string.Equals(task.Status, TaskStatus.Open, StringComparison.OrdinalIgnoreCase))
+		{
+			return TaskOperationResult.Success();
+		}
+
+		task.Status = TaskStatus.Open;
+		await _db.SaveChangesAsync(cancellationToken);
+		return TaskOperationResult.Success();
+	}
+
 	public async Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
