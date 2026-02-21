@@ -23,11 +23,6 @@ public sealed class TaskRepository : ITaskRepository
 		_logger = logger;
 	}
 
-	private static bool IsTasksStatusConstraintViolation(DbUpdateException ex)
-		=> ex.InnerException is Npgsql.PostgresException pg
-			&& string.Equals(pg.SqlState, "23514", StringComparison.Ordinal)
-			&& string.Equals(pg.ConstraintName, "ck_tasks_status_allowed", StringComparison.Ordinal);
-
 	public async Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
@@ -42,12 +37,6 @@ public sealed class TaskRepository : ITaskRepository
 		{
 			_logger.LogWarning("CreateTask rejected: actor is not admin. ActorUserId={ActorUserId}.", actorUserId);
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.Forbidden);
-		}
-
-		if(!TryNormalizeStatus(model.Status, out var normalizedStatus))
-		{
-			_logger.LogWarning("CreateTask rejected: invalid Status. ActorUserId={ActorUserId}, Status={Status}.", actorUserId, model.Status);
-			return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
 		}
 
 		var geoError = await EnsureRegionCityAsync(model.RegionId, model.CityId, cancellationToken);
@@ -100,7 +89,7 @@ public sealed class TaskRepository : ITaskRepository
 			ExecutionLocation = model.ExecutionLocation,
 			PublishedAt = model.PublishedAt,
 			DeadlineAt = model.DeadlineAt ?? model.PublishedAt,
-			Status = normalizedStatus,
+			Status = TaskStatus.Open,
 			RegionId = model.RegionId,
 			CityId = model.CityId,
 		};
@@ -116,16 +105,7 @@ public sealed class TaskRepository : ITaskRepository
 			});
 		}
 
-		try
-		{
-			await _db.SaveChangesAsync(cancellationToken);
-		}
-		catch(DbUpdateException ex) when(IsTasksStatusConstraintViolation(ex))
-		{
-			_logger.LogWarning(ex, "CreateTask rejected: invalid Status blocked by DB constraint. ActorUserId={ActorUserId}, Status={Status}.",
-				actorUserId, normalizedStatus);
-			return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
-		}
+		await _db.SaveChangesAsync(cancellationToken);
 		return TaskOperationResult<Guid>.Success(entity.Id);
 	}
 
@@ -143,12 +123,6 @@ public sealed class TaskRepository : ITaskRepository
 		if(task is null)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
-		}
-
-		if(!TryNormalizeStatus(model.Status, out var normalizedStatus))
-		{
-			_logger.LogWarning("UpdateTask rejected: invalid Status. ActorUserId={ActorUserId}, TaskId={TaskId}, Status={Status}.", actorUserId, taskId, model.Status);
-			return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
 		}
 
 		var isAuthor = task.AuthorUserId == actorUserId;
@@ -221,9 +195,7 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		task.ExecutionLocation = model.ExecutionLocation;
-		task.PublishedAt = model.PublishedAt;
-		task.DeadlineAt = model.DeadlineAt ?? model.PublishedAt;
-		task.Status = normalizedStatus;
+		task.DeadlineAt = model.DeadlineAt ?? task.PublishedAt;
 		task.RegionId = model.RegionId;
 		task.CityId = model.CityId;
 
@@ -238,16 +210,7 @@ public sealed class TaskRepository : ITaskRepository
 			});
 		}
 
-		try
-		{
-			await _db.SaveChangesAsync(cancellationToken);
-		}
-		catch(DbUpdateException ex) when(IsTasksStatusConstraintViolation(ex))
-		{
-			_logger.LogWarning(ex, "UpdateTask rejected: invalid Status blocked by DB constraint. ActorUserId={ActorUserId}, TaskId={TaskId}, Status={Status}.",
-				actorUserId, taskId, normalizedStatus);
-			return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
-		}
+		await _db.SaveChangesAsync(cancellationToken);
 
 		if(coverChanged && previousCoverId.HasValue && previousCoverId != task.CoverImageId)
 		{
@@ -556,35 +519,4 @@ public sealed class TaskRepository : ITaskRepository
 			t.RegionId,
 			t.CityId,
 			trustedAdminIds);
-
-	private static bool TryNormalizeStatus(string? status, out string normalized)
-	{
-		if(string.IsNullOrWhiteSpace(status))
-		{
-			normalized = TaskStatus.Open;
-			return true;
-		}
-
-		var s = status.Trim();
-		if(string.Equals(s, "string", StringComparison.OrdinalIgnoreCase))
-		{
-			normalized = TaskStatus.Open;
-			return true;
-		}
-
-		if(string.Equals(s, TaskStatus.Open, StringComparison.OrdinalIgnoreCase))
-		{
-			normalized = TaskStatus.Open;
-			return true;
-		}
-
-		if(string.Equals(s, TaskStatus.Closed, StringComparison.OrdinalIgnoreCase))
-		{
-			normalized = TaskStatus.Closed;
-			return true;
-		}
-
-		normalized = string.Empty;
-		return false;
-	}
 }

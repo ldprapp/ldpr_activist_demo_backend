@@ -152,18 +152,6 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
-		if(!TryNormalizeTaskStatus(request.Status, out var normalizedStatus, out var statusError))
-		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["status"] = new[] { statusError! },
-				},
-				title: "Некорректный запрос.",
-				detail: "Поле status допускает только значения 'open' или 'closed'.");
-		}
-
 		Guid? coverImageId = null;
 		if(request.CoverImage is not null)
 		{
@@ -193,7 +181,6 @@ public sealed class TasksController : ControllerBase
 			request.ExecutionLocation,
 			publishedAt,
 			request.DeadlineAt,
-			normalizedStatus,
 			request.RegionId,
 			request.CityId,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
@@ -233,18 +220,6 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
-		if(!TryNormalizeTaskStatus(request.Status, out var normalizedStatus, out var statusError))
-		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["status"] = new[] { statusError! },
-				},
-				title: "Некорректный запрос.",
-				detail: "Поле status допускает только значения 'open' или 'closed'.");
-		}
-
 		Guid? coverImageId = null;
 		if(request.CoverImage is not null)
 		{
@@ -274,7 +249,6 @@ public sealed class TasksController : ControllerBase
 			request.ExecutionLocation,
 			publishedAt,
 			request.DeadlineAt,
-			normalizedStatus,
 			request.RegionId,
 			request.CityId,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
@@ -828,7 +802,6 @@ public sealed class TasksController : ControllerBase
 
 		public string? ExecutionLocation { get; set; }
 		public DateTimeOffset? DeadlineAt { get; set; }
-		public string Status { get; set; } = TaskStatus.Open;
 		public int RegionId { get; set; }
 		public int? CityId { get; set; }
 		public List<Guid>? TrustedAdminIds { get; set; }
@@ -845,7 +818,6 @@ public sealed class TasksController : ControllerBase
 
 		public string? ExecutionLocation { get; set; }
 		public DateTimeOffset? DeadlineAt { get; set; }
-		public string Status { get; set; } = TaskStatus.Open;
 		public int RegionId { get; set; }
 		public int? CityId { get; set; }
 		public List<Guid>? TrustedAdminIds { get; set; }
@@ -1019,37 +991,6 @@ public sealed class TasksController : ControllerBase
 		}
 
 		error = "Status must be 'open' or 'closed' (or be empty).";
-		return false;
-	}
-
-	private static bool TryNormalizeTaskStatus(string? raw, out string normalized, out string? error)
-	{
-		error = null;
-		normalized = TaskStatus.Open;
-
-		if(string.IsNullOrWhiteSpace(raw))
-		{
-			return true;
-		}
-
-		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
-		{
-			return true;
-		}
-
-		if(string.Equals(raw, TaskStatus.Open, StringComparison.OrdinalIgnoreCase))
-		{
-			normalized = TaskStatus.Open;
-			return true;
-		}
-
-		if(string.Equals(raw, TaskStatus.Closed, StringComparison.OrdinalIgnoreCase))
-		{
-			normalized = TaskStatus.Closed;
-			return true;
-		}
-
-		error = "Status must be 'open' or 'closed'.";
 		return false;
 	}
 

@@ -9,7 +9,6 @@ public sealed record TaskCreateModel(
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
-	string Status,
 	int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid> TrustedAdminIds);
