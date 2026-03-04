@@ -1,4 +1,6 @@
-﻿using TaskStatus = LdprActivistDemo.Contracts.Tasks.TaskStatus;
+﻿using LdprActivistDemo.Contracts.Tasks;
+
+using TaskStatus = LdprActivistDemo.Contracts.Tasks.TaskStatus;
 
 namespace LdprActivistDemo.Persistence;
 
@@ -27,6 +29,8 @@ public sealed class TaskEntity
 	public DateTimeOffset DeadlineAt { get; set; }
 
 	public string Status { get; set; } = TaskStatus.Open;
+
+	public string VerificationType { get; set; } = TaskVerificationType.Manual;
 
 	public int RegionId { get; set; }
 

@@ -86,4 +86,13 @@ public sealed class TaskService : ITaskService
 
 	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserApprovedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
 		=> _tasks.GetByUserApprovedAsync(actorUserId, actorUserPassword, cancellationToken);
+
+	public Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionAdminFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid? userId, string? decisionStatus, CancellationToken cancellationToken)
+		=> _submissions.GetAdminFeedAsync(actorUserId, actorUserPassword, taskId, userId, decisionStatus, cancellationToken);
+
+	public Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(Guid actorUserId, string actorUserPassword, string? decisionStatus, CancellationToken cancellationToken)
+		=> _submissions.GetUserFeedAsync(actorUserId, actorUserPassword, decisionStatus, cancellationToken);
+
+	public Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken)
+		=> _submissions.GetByIdAsync(actorUserId, actorUserPassword, submissionId, cancellationToken);
 }

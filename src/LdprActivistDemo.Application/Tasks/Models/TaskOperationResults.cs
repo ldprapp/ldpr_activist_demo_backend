@@ -10,6 +10,7 @@ public enum TaskOperationError
 	RegionNotFound,
 	CityRegionMismatch,
 	TaskClosed,
+	TaskAutoVerificationNotSupported,
 	AlreadySubmitted,
 	SubmissionAlreadyExists,
 	SubmissionNotFound,

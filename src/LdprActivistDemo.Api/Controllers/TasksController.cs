@@ -40,6 +40,15 @@ public sealed class TasksController : ControllerBase
 		DeadlineLatest = 4,
 	}
 
+	public enum SubmissionFeedSort
+	{
+		None = 0,
+		SubmittedNewest = 1,
+		SubmittedOldest = 2,
+		DecidedNewest = 3,
+		DecidedOldest = 4,
+	}
+
 	private static DateTimeOffset? GetDeadline(TaskModel t) => t.DeadlineAt;
 
 	private static bool IsDeadlineExpired(TaskModel t, DateTimeOffset nowUtc)
@@ -152,6 +161,18 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		if(!TryNormalizeTaskVerificationTypeForCreate(request.VerificationType, out var verificationType, out var verificationTypeError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["verificationType"] = new[] { verificationTypeError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр verificationType допускает только значения 'auto' или 'manual' (или пустое значение, чтобы использовать 'manual').");
+		}
+
 		Guid? coverImageId = null;
 		if(request.CoverImage is not null)
 		{
@@ -183,7 +204,8 @@ public sealed class TasksController : ControllerBase
 			request.DeadlineAt,
 			request.RegionId,
 			request.CityId,
-			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
+			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
+			verificationType);
 
 		var result = await _tasks.CreateAsync(actorUserId, actorUserPassword!, model, cancellationToken);
 		if(!result.IsSuccess)
@@ -220,6 +242,18 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		if(!TryNormalizeTaskVerificationTypeForUpdate(request.VerificationType, out var verificationType, out var verificationTypeError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["verificationType"] = new[] { verificationTypeError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр verificationType допускает только значения 'auto' или 'manual' (или пустое значение, чтобы не менять поле).");
+		}
+
 		Guid? coverImageId = null;
 		if(request.CoverImage is not null)
 		{
@@ -251,7 +285,8 @@ public sealed class TasksController : ControllerBase
 			request.DeadlineAt,
 			request.RegionId,
 			request.CityId,
-			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>());
+			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
+			verificationType);
 
 		var result = await _tasks.UpdateAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
@@ -649,74 +684,160 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpGet("{taskId:guid}/submit")]
-	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[HttpGet("submissions/feed/admin")]
+	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetSubmittedUsersAsync(
-		[FromRoute] Guid taskId,
+	public async Task<IActionResult> GetSubmissionAdminFeedAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		CancellationToken cancellationToken)
+		[FromQuery] string? status = null,
+		[FromQuery] Guid? taskId = null,
+		[FromQuery] Guid? userId = null,
+		[FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.None,
+		[FromQuery] int? start = null,
+		[FromQuery] int? end = null,
+		CancellationToken cancellationToken = default)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null) return invalidActor;
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
 
-		var result = await _tasks.GetSubmittedUsersAsync(actorUserId, actorUserPassword!, taskId, cancellationToken);
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null)
+		{
+			return invalid;
+		}
+
+		var invalidFilters = TryBuildSubmissionFeedFilterValidationProblem(taskId, userId);
+		if(invalidFilters is not null)
+		{
+			return invalidFilters;
+		}
+
+		if(!TryNormalizeSubmissionDecisionStatusFilter(status, out var normalizedStatus, out var statusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["status"] = new[] { statusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр status допускает только значения 'in_progress', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
+		}
+
+		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var result = await _tasks.GetSubmissionAdminFeedAsync(
+			actorUserId,
+			actorUserPassword!,
+			taskId,
+			userId,
+			normalizedStatus,
+			cancellationToken);
+
 		if(!result.IsSuccess || result.Value is null)
 		{
 			return MapTaskError(result.Error);
 		}
 
-		return Ok(result.Value.Select(ToPublicDto).ToList());
+		var ordered = ApplySubmissionSorting(result.Value, sort);
+		var dtos = ordered.Select(ToDto).ToList();
+		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
-	[HttpGet("{taskId:guid}/approve")]
-	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[HttpGet("submissions/feed/user")]
+	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetApprovedUsersAsync(
-		[FromRoute] Guid taskId,
+	public async Task<IActionResult> GetSubmissionUserFeedAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		CancellationToken cancellationToken)
+		[FromQuery] string? status = null,
+		[FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.None,
+		[FromQuery] int? start = null,
+		[FromQuery] int? end = null,
+		CancellationToken cancellationToken = default)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null) return invalidActor;
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
 
-		var result = await _tasks.GetApprovedUsersAsync(actorUserId, actorUserPassword!, taskId, cancellationToken);
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null)
+		{
+			return invalid;
+		}
+
+		if(!TryNormalizeSubmissionDecisionStatusFilter(status, out var normalizedStatus, out var statusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["status"] = new[] { statusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр status допускает только значения 'in_progress', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
+		}
+
+		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var result = await _tasks.GetSubmissionUserFeedAsync(
+			actorUserId,
+			actorUserPassword!,
+			normalizedStatus,
+			cancellationToken);
+
 		if(!result.IsSuccess || result.Value is null)
 		{
 			return MapTaskError(result.Error);
 		}
 
-		return Ok(result.Value.Select(ToPublicDto).ToList());
+		var ordered = ApplySubmissionSorting(result.Value, sort);
+		var dtos = ordered.Select(ToDto).ToList();
+		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
-	[HttpGet("{taskId:guid}/submit/{userId:guid}")]
-	[ProducesResponseType(typeof(SubmissionUserViewDto), StatusCodes.Status200OK)]
+	[HttpGet("submissions/{submissionId:guid}")]
+	[ProducesResponseType(typeof(SubmissionDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetSubmittedUserAsync(
-		[FromRoute] Guid taskId,
-		[FromRoute] Guid userId,
+	public async Task<IActionResult> GetSubmissionByIdAsync(
+		[FromRoute] Guid submissionId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null) return invalidActor;
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
 
-		var result = await _tasks.GetSubmittedUserAsync(actorUserId, actorUserPassword!, taskId, userId, cancellationToken);
+		var result = await _tasks.GetSubmissionByIdAsync(actorUserId, actorUserPassword!, submissionId, cancellationToken);
 		if(!result.IsSuccess || result.Value is null)
 		{
 			return MapTaskError(result.Error);
 		}
 
-		return Ok(new SubmissionUserViewDto(ToPublicDto(result.Value.User), ToDto(result.Value.Submission)));
+		return Ok(ToDto(result.Value));
 	}
 
 	[HttpPost("{taskId:guid}/approve")]
@@ -797,6 +918,7 @@ public sealed class TasksController : ControllerBase
 		public string Description { get; set; } = string.Empty;
 		public string? RequirementsText { get; set; }
 		public int RewardPoints { get; set; }
+		public string? VerificationType { get; set; }
 
 		public IFormFile? CoverImage { get; set; }
 
@@ -813,6 +935,7 @@ public sealed class TasksController : ControllerBase
 		public string Description { get; set; } = string.Empty;
 		public string? RequirementsText { get; set; }
 		public int RewardPoints { get; set; }
+		public string? VerificationType { get; set; }
 
 		public IFormFile? CoverImage { get; set; }
 
@@ -827,6 +950,44 @@ public sealed class TasksController : ControllerBase
 	{
 		public string? ProofText { get; set; }
 		public List<IFormFile>? Photos { get; set; }
+	}
+
+	private static IReadOnlyList<TaskSubmissionModel> ApplySubmissionSorting(
+		IEnumerable<TaskSubmissionModel> submissions,
+		SubmissionFeedSort sort)
+	{
+		var list = submissions.ToList();
+
+		switch(sort)
+		{
+			case SubmissionFeedSort.SubmittedNewest:
+				return list
+					.OrderByDescending(s => s.SubmittedAt)
+					.ThenBy(s => s.Id)
+					.ToList();
+
+			case SubmissionFeedSort.SubmittedOldest:
+				return list
+					.OrderBy(s => s.SubmittedAt)
+					.ThenBy(s => s.Id)
+					.ToList();
+
+			case SubmissionFeedSort.DecidedNewest:
+				return list
+					.OrderByDescending(s => s.DecidedAt ?? DateTimeOffset.MinValue)
+					.ThenBy(s => s.Id)
+					.ToList();
+
+			case SubmissionFeedSort.DecidedOldest:
+				return list
+					.OrderBy(s => s.DecidedAt ?? DateTimeOffset.MaxValue)
+					.ThenBy(s => s.Id)
+					.ToList();
+
+			case SubmissionFeedSort.None:
+			default:
+				return list;
+		}
 	}
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
@@ -963,6 +1124,132 @@ public sealed class TasksController : ControllerBase
 			.ToList();
 	}
 
+	private IActionResult? TryBuildSubmissionFeedFilterValidationProblem(Guid? taskId, Guid? userId)
+	{
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(taskId.HasValue && taskId.Value == Guid.Empty)
+		{
+			errors["taskId"] = new[] { "TaskId must be non-empty GUID." };
+		}
+
+		if(userId.HasValue && userId.Value == Guid.Empty)
+		{
+			errors["userId"] = new[] { "UserId must be non-empty GUID." };
+		}
+
+		return errors.Count == 0
+			? null
+			: this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте параметры taskId и userId (GUID не должен быть пустым).");
+	}
+
+	private static bool TryNormalizeSubmissionDecisionStatusFilter(string? raw, out string? normalized, out string? error)
+	{
+		error = null;
+		normalized = null;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, TaskSubmissionDecisionStatus.InProgress, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskSubmissionDecisionStatus.InProgress;
+			return true;
+		}
+
+		if(string.Equals(raw, TaskSubmissionDecisionStatus.Approve, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskSubmissionDecisionStatus.Approve;
+			return true;
+		}
+
+		if(string.Equals(raw, TaskSubmissionDecisionStatus.Rejected, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskSubmissionDecisionStatus.Rejected;
+			return true;
+		}
+
+		error = "Status must be 'in_progress', 'approve' or 'rejected' (or be empty).";
+		return false;
+	}
+
+	private static bool TryNormalizeTaskVerificationTypeForCreate(string? raw, out string normalized, out string? error)
+	{
+		error = null;
+		normalized = TaskVerificationType.Manual;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Auto;
+			return true;
+		}
+
+		if(string.Equals(token, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Manual;
+			return true;
+		}
+
+		error = "VerificationType must be 'auto' or 'manual' (or be empty).";
+		return false;
+	}
+
+	private static bool TryNormalizeTaskVerificationTypeForUpdate(string? raw, out string? normalized, out string? error)
+	{
+		error = null;
+		normalized = null;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Auto;
+			return true;
+		}
+
+		if(string.Equals(token, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Manual;
+			return true;
+		}
+
+		error = "VerificationType must be 'auto' or 'manual' (or be empty).";
+		return false;
+	}
+
 	private static bool TryNormalizeTaskStatusFilter(string? raw, out string? normalized, out string? error)
 	{
 		error = null;
@@ -1041,6 +1328,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),
 			TaskOperationError.CityRegionMismatch => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Город не принадлежит региону.", "Указанный город должен относиться к указанному региону."),
 			TaskOperationError.TaskClosed => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskClosed, "Задача закрыта.", "Операция недоступна для закрытой задачи."),
+			TaskOperationError.TaskAutoVerificationNotSupported => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAutoVerificationNotSupported, "Операция недоступна.", "Операции отправки/изменения/удаления заявки и ручной модерации недоступны для задач с VerificationType='auto'."),
 			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя изменять подтверждённую заявку."),
 			TaskOperationError.SubmissionAlreadyExists => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskSubmissionExists, "Заявка уже существует.", "Повторная отправка запрещена."),
 			TaskOperationError.SubmissionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskSubmissionNotFound, "Заявка не найдена."),
@@ -1063,7 +1351,8 @@ public sealed class TasksController : ControllerBase
 			NormalizeTaskStatusForContract(t),
 			t.RegionId,
 			t.CityId,
-			t.TrustedAdminIds);
+			t.TrustedAdminIds,
+			t.VerificationType);
 
 	private static UserDto ToPublicDto(UserPublicModel u)
 		=> new(

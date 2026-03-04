@@ -52,6 +52,7 @@ await using(var scope = app.Services.CreateAsyncScope())
 
 app.UseMiddleware<ApiExceptionHandlingMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ExceptionDetailsMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.UseSwagger();

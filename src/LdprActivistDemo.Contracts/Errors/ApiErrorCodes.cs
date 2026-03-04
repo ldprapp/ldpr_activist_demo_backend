@@ -27,6 +27,7 @@ public static class ApiErrorCodes
 	public const string Forbidden = "forbidden";
 	public const string TaskNotFound = "task_not_found";
 	public const string TaskClosed = "task_closed";
+	public const string TaskAutoVerificationNotSupported = "task_auto_verification_not_supported";
 	public const string TaskAlreadySubmitted = "task_already_submitted";
 	public const string TaskSubmissionExists = "task_submission_exists";
 	public const string TaskSubmissionNotFound = "task_submission_not_found";

@@ -13,4 +13,5 @@ public sealed record CreateTaskRequest(
 	DateTimeOffset? DeadlineAt,
 	[Range(1, int.MaxValue)] int RegionId,
 	int? CityId,
-	IReadOnlyList<Guid>? TrustedAdminIds);
+	IReadOnlyList<Guid>? TrustedAdminIds,
+	string VerificationType = TaskVerificationType.Manual);

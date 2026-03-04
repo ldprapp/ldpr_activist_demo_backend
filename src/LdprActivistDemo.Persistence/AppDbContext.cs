@@ -102,6 +102,10 @@ public sealed class AppDbContext : DbContext
 				t.HasCheckConstraint(
 					"ck_tasks_status_allowed",
 					$"\"Status\" IN ('{TaskStatusValues.Open}','{TaskStatusValues.Closed}')");
+
+				t.HasCheckConstraint(
+				"ck_tasks_verification_type_allowed",
+				$"\"VerificationType\" IN ('{TaskVerificationType.Auto}','{TaskVerificationType.Manual}')");
 			});
 			b.HasKey(x => x.Id);
 
@@ -112,6 +116,10 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.RewardPoints).IsRequired();
 
 			b.Property(x => x.Status).IsRequired();
+
+			b.Property(x => x.VerificationType)
+				.IsRequired()
+				.HasDefaultValue(TaskVerificationType.Manual);
 
 			b.Property(x => x.CoverImageId);
 			b.HasOne<ImageEntity>()

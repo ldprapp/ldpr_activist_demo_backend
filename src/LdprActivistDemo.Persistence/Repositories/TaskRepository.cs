@@ -1,6 +1,7 @@
 ﻿using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
 using LdprActivistDemo.Application.Users;
+using LdprActivistDemo.Contracts.Tasks;
 using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.EntityFrameworkCore;
@@ -55,6 +56,14 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
 		}
 
+		if(!TryNormalizeVerificationTypeForCreate(model.VerificationType, out var verificationType))
+		{
+			_logger.LogWarning("CreateTask rejected: invalid VerificationType. ActorUserId={ActorUserId}, VerificationType={VerificationType}.",
+				actorUserId,
+				model.VerificationType);
+			return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+		}
+
 		var trustedAdminIds = model.TrustedAdminIds
 			.Where(x => x != Guid.Empty)
 			.Distinct()
@@ -90,6 +99,7 @@ public sealed class TaskRepository : ITaskRepository
 			PublishedAt = model.PublishedAt,
 			DeadlineAt = model.DeadlineAt ?? model.PublishedAt,
 			Status = TaskStatus.Open,
+			VerificationType = verificationType,
 			RegionId = model.RegionId,
 			CityId = model.CityId,
 		};
@@ -158,6 +168,20 @@ public sealed class TaskRepository : ITaskRepository
 			_logger.LogWarning("UpdateTask rejected: negative RewardPoints. ActorUserId={ActorUserId}, TaskId={TaskId}, RewardPoints={RewardPoints}.",
 				actorUserId, taskId, model.RewardPoints);
 			return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		if(model.VerificationType is not null)
+		{
+			if(!TryNormalizeVerificationTypeForUpdate(model.VerificationType, out var verificationType))
+			{
+				_logger.LogWarning("UpdateTask rejected: invalid VerificationType. ActorUserId={ActorUserId}, TaskId={TaskId}, VerificationType={VerificationType}.",
+					actorUserId,
+					taskId,
+					model.VerificationType);
+				return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
+
+			task.VerificationType = verificationType;
 		}
 
 		var trustedAdminIds = model.TrustedAdminIds
@@ -503,6 +527,68 @@ public sealed class TaskRepository : ITaskRepository
 			.ToList();
 	}
 
+	private static bool TryNormalizeVerificationTypeForCreate(string? raw, out string normalized)
+	{
+		normalized = TaskVerificationType.Manual;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Auto;
+			return true;
+		}
+
+		if(string.Equals(token, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Manual;
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool TryNormalizeVerificationTypeForUpdate(string raw, out string normalized)
+	{
+		normalized = TaskVerificationType.Manual;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return false;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Auto;
+			return true;
+		}
+
+		if(string.Equals(token, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			normalized = TaskVerificationType.Manual;
+			return true;
+		}
+
+		return false;
+	}
+
 	private static TaskModel ToModel(TaskEntity t, IReadOnlyList<Guid> trustedAdminIds)
 		=> new(
 			t.Id,
@@ -518,5 +604,6 @@ public sealed class TaskRepository : ITaskRepository
 			t.Status,
 			t.RegionId,
 			t.CityId,
-			trustedAdminIds);
+			trustedAdminIds,
+			t.VerificationType);
 }

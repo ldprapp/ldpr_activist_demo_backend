@@ -14,4 +14,5 @@ public sealed record TaskDto(
 	string Status,
 	int RegionId,
 	int? CityId,
-	IReadOnlyList<Guid> TrustedAdminIds);
+	IReadOnlyList<Guid> TrustedAdminIds,
+	string VerificationType = TaskVerificationType.Manual);

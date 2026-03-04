@@ -14,4 +14,7 @@ public interface ITaskSubmissionRepository
 	Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken);
 	Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, DateTimeOffset decidedAt, CancellationToken cancellationToken);
 	Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, DateTimeOffset decidedAt, CancellationToken cancellationToken);
+	Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetAdminFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid? userId, string? decisionStatus, CancellationToken cancellationToken);
+	Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetUserFeedAsync(Guid actorUserId, string actorUserPassword, string? decisionStatus, CancellationToken cancellationToken);
+	Task<TaskOperationResult<TaskSubmissionModel>> GetByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken);
 }
