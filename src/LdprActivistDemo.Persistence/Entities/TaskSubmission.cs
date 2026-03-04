@@ -1,4 +1,6 @@
-﻿namespace LdprActivistDemo.Persistence;
+﻿using LdprActivistDemo.Contracts.Tasks;
+
+namespace LdprActivistDemo.Persistence;
 
 public sealed class TaskSubmission
 {
@@ -14,7 +16,7 @@ public sealed class TaskSubmission
 
 	public DateTimeOffset SubmittedAt { get; set; }
 
-	public string? DecisionStatus { get; set; }
+	public string DecisionStatus { get; set; } = TaskSubmissionDecisionStatus.InProgress;
 
 	public Guid? DecidedByAdminId { get; set; }
 

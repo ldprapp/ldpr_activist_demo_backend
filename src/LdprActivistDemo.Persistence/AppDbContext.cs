@@ -167,12 +167,13 @@ public sealed class AppDbContext : DbContext
 			{
 				t.HasCheckConstraint(
 					"ck_task_submissions_decision_status_allowed",
-					$"\"DecisionStatus\" IS NULL OR \"DecisionStatus\" IN ('{TaskSubmissionDecisionStatus.InProgress}','{TaskSubmissionDecisionStatus.Approve}','{TaskSubmissionDecisionStatus.Rejected}')");
+					$"\"DecisionStatus\" IN ('{TaskSubmissionDecisionStatus.InProgress}','{TaskSubmissionDecisionStatus.SubmittedForReview}','{TaskSubmissionDecisionStatus.Approve}','{TaskSubmissionDecisionStatus.Rejected}')");
 			});
 			b.HasKey(x => x.Id);
 
 			b.Property(x => x.DecisionStatus)
-				.HasDefaultValue(TaskSubmissionDecisionStatus.InProgress);
+			   .IsRequired()
+			   .HasDefaultValue(TaskSubmissionDecisionStatus.InProgress);
 
 			b.HasIndex(x => new { x.TaskId, x.UserId }).IsUnique();
 

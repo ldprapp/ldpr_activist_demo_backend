@@ -6,6 +6,7 @@ public enum TaskOperationError
 	ValidationFailed,
 	InvalidCredentials,
 	Forbidden,
+	TaskAccessDenied,
 	TaskNotFound,
 	RegionNotFound,
 	CityRegionMismatch,

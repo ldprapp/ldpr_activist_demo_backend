@@ -544,7 +544,6 @@ public sealed class TasksController : ControllerBase
 	}
 
 	[HttpPost("{taskId:guid}/submit")]
-	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -554,47 +553,14 @@ public sealed class TasksController : ControllerBase
 		[FromRoute] Guid taskId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromForm] SubmitTaskFormRequest request,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
 		if(invalidActor is not null) return invalidActor;
 
-		var invalid = TryBuildValidationProblemIfInvalidModel();
-		if(invalid is not null)
-		{
-			return invalid;
-		}
-
-		IReadOnlyList<Guid>? photoImageIds = null;
-
-		if(request.Photos is { Count: > 0 })
-		{
-			var models = new List<LdprActivistDemo.Application.Images.Models.ImageCreateModel>(request.Photos.Count);
-
-			for(var i = 0; i < request.Photos.Count; i++)
-			{
-				var f = request.Photos[i];
-				var err = UploadedImageReader.ValidateImage(f);
-				if(err is not null)
-				{
-					return this.ValidationProblemWithCode(
-						ApiErrorCodes.ValidationFailed,
-						new Dictionary<string, string[]>
-						{
-							[$"photos[{i}]"] = new[] { err },
-						});
-				}
-
-				models.Add(await UploadedImageReader.ReadAsync(f, cancellationToken));
-			}
-
-			photoImageIds = await _images.CreateManyAsync(models, cancellationToken);
-		}
-
 		var model = new TaskSubmissionCreateModel(
-			PhotoImageIds: photoImageIds,
-			ProofText: request.ProofText,
+			PhotoImageIds: null,
+			ProofText: null,
 			SubmittedAt: DateTimeOffset.UtcNow);
 
 		var result = await _tasks.SubmitAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
@@ -606,38 +572,15 @@ public sealed class TasksController : ControllerBase
 		return StatusCode(StatusCodes.Status201Created);
 	}
 
-	[HttpDelete("{taskId:guid}/submit")]
-	[ProducesResponseType(StatusCodes.Status204NoContent)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-	public async Task<IActionResult> DeleteSubmissionAsync(
-		[FromRoute] Guid taskId,
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		CancellationToken cancellationToken)
-	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null) return invalidActor;
-
-		var result = await _tasks.DeleteSubmissionAsync(
-			actorUserId,
-			actorUserPassword!,
-			taskId,
-			cancellationToken);
-
-		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
-	}
-
-	[HttpPut("{taskId:guid}/submit")]
+	[HttpPost("submissions/submit/{submissionId:guid}/for-review")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-	public async Task<IActionResult> UpdateSubmissionAsync(
-		[FromRoute] Guid taskId,
+	public async Task<IActionResult> SubmitForReviewAsync(
+		[FromRoute] Guid submissionId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromForm] SubmitTaskFormRequest request,
@@ -680,11 +623,66 @@ public sealed class TasksController : ControllerBase
 			ProofText: request.ProofText,
 			SubmittedAt: DateTimeOffset.UtcNow);
 
-		var result = await _tasks.UpdateSubmissionAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
+		var result = await _tasks.SubmitForReviewAsync(actorUserId, actorUserPassword!, submissionId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpGet("submissions/feed/admin")]
+	[HttpPut("submissions/submit/{submissionId:guid}")]
+	[Consumes("multipart/form-data")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> UpdateSubmissionAsync(
+		[FromRoute] Guid submissionId,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromForm] SubmitTaskFormRequest request,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null) return invalidActor;
+
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null) return invalid;
+
+		IReadOnlyList<Guid>? photoImageIds = null;
+
+		if(request.Photos is { Count: > 0 })
+		{
+			var models = new List<LdprActivistDemo.Application.Images.Models.ImageCreateModel>(request.Photos.Count);
+
+			for(var i = 0; i < request.Photos.Count; i++)
+			{
+				var f = request.Photos[i];
+				var err = UploadedImageReader.ValidateImage(f);
+				if(err is not null)
+				{
+					return this.ValidationProblemWithCode(
+						ApiErrorCodes.ValidationFailed,
+						new Dictionary<string, string[]>
+						{
+							[$"photos[{i}]"] = new[] { err },
+						});
+				}
+
+				models.Add(await UploadedImageReader.ReadAsync(f, cancellationToken));
+			}
+
+			photoImageIds = await _images.CreateManyAsync(models, cancellationToken);
+		}
+
+		var model = new TaskSubmissionCreateModel(
+			PhotoImageIds: photoImageIds,
+			ProofText: request.ProofText,
+			SubmittedAt: DateTimeOffset.UtcNow);
+
+		var result = await _tasks.UpdateSubmissionAsync(actorUserId, actorUserPassword!, submissionId, model, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
+	}
+
+	[HttpGet("submit/feed/admin")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -728,7 +726,7 @@ public sealed class TasksController : ControllerBase
 					["status"] = new[] { statusError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр status допускает только значения 'in_progress', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
+				detail: "Параметр status допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
 		}
 
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
@@ -755,7 +753,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
-	[HttpGet("submissions/feed/user")]
+	[HttpGet("submit/feed/user")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -789,7 +787,7 @@ public sealed class TasksController : ControllerBase
 					["status"] = new[] { statusError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр status допускает только значения 'in_progress', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
+				detail: "Параметр status допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
 		}
 
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
@@ -814,7 +812,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
-	[HttpGet("submissions/{submissionId:guid}")]
+	[HttpGet("submit/{submissionId:guid}")]
 	[ProducesResponseType(typeof(SubmissionDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -840,7 +838,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
-	[HttpPost("{taskId:guid}/approve")]
+	[HttpPost("submit/{submissionId:guid}/approve")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -848,9 +846,8 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> ApproveAsync(
-		[FromRoute] Guid taskId,
+		[FromRoute] Guid submissionId,
 		[FromQuery] Guid actorUserId,
-		[FromQuery] Guid userId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
@@ -860,23 +857,11 @@ public sealed class TasksController : ControllerBase
 			return invalidActor;
 		}
 
-		if(userId == Guid.Empty)
-		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["userId"] = new[] { "UserId is required." },
-				},
-				title: "Некорректный запрос.",
-				detail: "Передайте userId параметром запроса.");
-		}
-
-		var result = await _tasks.ApproveAsync(actorUserId, actorUserPassword!, taskId, userId, cancellationToken);
+		var result = await _tasks.ApproveAsync(actorUserId, actorUserPassword!, submissionId, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpPost("{taskId:guid}/reject")]
+	[HttpPost("submit/{submissionId:guid}/reject")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -884,9 +869,8 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> RejectAsync(
-		[FromRoute] Guid taskId,
+		[FromRoute] Guid submissionId,
 		[FromQuery] Guid actorUserId,
-		[FromQuery] Guid userId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
@@ -896,19 +880,7 @@ public sealed class TasksController : ControllerBase
 			return invalidActor;
 		}
 
-		if(userId == Guid.Empty)
-		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["userId"] = new[] { "UserId is required." },
-				},
-				title: "Некорректный запрос.",
-				detail: "Передайте userId параметром запроса.");
-		}
-
-		var result = await _tasks.RejectAsync(actorUserId, actorUserPassword!, taskId, userId, cancellationToken);
+		var result = await _tasks.RejectAsync(actorUserId, actorUserPassword!, submissionId, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
@@ -1168,6 +1140,12 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
+		if(string.Equals(raw, TaskSubmissionDecisionStatus.SubmittedForReview, StringComparison.OrdinalIgnoreCase))
+		{
+			normalized = TaskSubmissionDecisionStatus.SubmittedForReview;
+			return true;
+		}
+
 		if(string.Equals(raw, TaskSubmissionDecisionStatus.Approve, StringComparison.OrdinalIgnoreCase))
 		{
 			normalized = TaskSubmissionDecisionStatus.Approve;
@@ -1180,7 +1158,7 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
-		error = "Status must be 'in_progress', 'approve' or 'rejected' (or be empty).";
+		error = "Status must be 'in_progress', 'submitted_for_review', 'approve' or 'rejected' (or be empty).";
 		return false;
 	}
 
@@ -1324,6 +1302,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.ValidationFailed => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.ValidationFailed, "Некорректный запрос.", "Проверьте тело запроса и параметры."),
 			TaskOperationError.InvalidCredentials => this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", $"Проверьте id пользователя и заголовок {ActorPasswordHeader}."),
 			TaskOperationError.Forbidden => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.Forbidden, "Нет доступа.", "Операция запрещена: требуется автор задачи или назначенный ответственный администратор."),
+			TaskOperationError.TaskAccessDenied => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.TaskAccessDenied, "Нет доступа.", "Задача недоступна пользователю или операция запрещена для текущей роли."),
 			TaskOperationError.TaskNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskNotFound, "Задача не найдена."),
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),
 			TaskOperationError.CityRegionMismatch => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Город не принадлежит региону.", "Указанный город должен относиться к указанному региону."),

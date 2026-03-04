@@ -20,12 +20,7 @@ public sealed class TaskService : ITaskService
 	public Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
 		=> _tasks.CreateAsync(actorUserId, actorUserPassword, model, cancellationToken);
 
-	public Task<TaskOperationResult> UpdateAsync(
-		Guid actorUserId,
-		string actorUserPassword,
-		Guid taskId,
-		TaskUpdateModel model,
-		CancellationToken cancellationToken)
+	public Task<TaskOperationResult> UpdateAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskUpdateModel model, CancellationToken cancellationToken)
 		=> _tasks.UpdateAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
 
 	public Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
@@ -61,25 +56,29 @@ public sealed class TaskService : ITaskService
 	public Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 		=> _submissions.SubmitAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
 
-	public Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
-		=> _submissions.UpdateSubmissionAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
+	public Task<TaskOperationResult> SubmitForReviewAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+		=> _submissions.SubmitForReviewAsync(actorUserId, actorUserPassword, submissionId, model, cancellationToken);
+
+	public Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+		=> _submissions.UpdateSubmissionAsync(actorUserId, actorUserPassword, submissionId, model, cancellationToken);
 
 	public Task<TaskOperationResult> DeleteSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 		=> _submissions.DeleteSubmissionAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 
 	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 		=> _submissions.GetSubmittedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+
 	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetApprovedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 		=> _submissions.GetApprovedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
 
 	public Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
 		=> _submissions.GetSubmittedUserAsync(actorUserId, actorPassword, taskId, userId, cancellationToken);
 
-	public Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
-		=> _submissions.ApproveAsync(actorUserId, actorPassword, taskId, userId, DateTimeOffset.UtcNow, cancellationToken);
+	public Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid submissionId, CancellationToken cancellationToken)
+		=> _submissions.ApproveAsync(actorUserId, actorPassword, submissionId, DateTimeOffset.UtcNow, cancellationToken);
 
-	public Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
-		=> _submissions.RejectAsync(actorUserId, actorPassword, taskId, userId, DateTimeOffset.UtcNow, cancellationToken);
+	public Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorPassword, Guid submissionId, CancellationToken cancellationToken)
+		=> _submissions.RejectAsync(actorUserId, actorPassword, submissionId, DateTimeOffset.UtcNow, cancellationToken);
 
 	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
 		=> _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword, cancellationToken);

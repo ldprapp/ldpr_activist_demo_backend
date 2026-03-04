@@ -39,9 +39,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	public async Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-
-		if(!ok)
+		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
+		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
 		{
 			_logger.LogWarning("SubmitTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskSubmitOperationResult.Fail(TaskOperationError.InvalidCredentials);
@@ -61,10 +60,33 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
 		}
 
-		if(task.Status == TaskStatus.Closed)
+		if(string.Equals(task.Status, TaskStatus.Closed, StringComparison.Ordinal))
 		{
 			_logger.LogWarning("SubmitTask rejected: task closed. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskClosed);
+		}
+
+		var geoOk = task.RegionId == actor.RegionId
+			&& (task.CityId is null || actor.CityId == task.CityId.Value);
+		if(!geoOk)
+		{
+			_logger.LogWarning("SubmitTask rejected: task is not accessible by geo. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskAccessDenied);
+		}
+
+		if(actor.IsAdmin)
+		{
+			var isAuthor = task.AuthorUserId == actorUserId;
+			var isTrustedAdmin = await _db.TaskTrustedAdmins.AsNoTracking()
+				.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
+			if(isAuthor || isTrustedAdmin)
+			{
+				_logger.LogWarning(
+					"SubmitTask rejected: admin cannot submit to own/responsible task. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+					actorUserId,
+					taskId);
+				return TaskSubmitOperationResult.Fail(TaskOperationError.TaskAccessDenied);
+			}
 		}
 
 		var existing = await _db.TaskSubmissions
@@ -73,30 +95,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(existing is not null)
 		{
-			return TaskSubmitOperationResult.Fail(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve
+			return TaskSubmitOperationResult.Fail(existing.DecisionStatus == TaskSubmissionDecisionStatus.Approve
 				? TaskOperationError.AlreadySubmitted
 				: TaskOperationError.SubmissionAlreadyExists);
-		}
-
-		var photoIds = (model.PhotoImageIds ?? Array.Empty<Guid>())
-			.Where(x => x != Guid.Empty)
-			.Distinct()
-			.ToArray();
-
-		if(photoIds.Length > 0)
-		{
-			var count = await _db.Images.AsNoTracking()
-				.Where(i => photoIds.Contains(i.Id))
-				.CountAsync(cancellationToken);
-
-			if(count != photoIds.Length)
-			{
-				_logger.LogWarning(
-					"SubmitTask rejected: some PhotoImageIds not found. ActorUserId={ActorUserId}, TaskId={TaskId}.",
-					actorUserId,
-					taskId);
-				return TaskSubmitOperationResult.Fail(TaskOperationError.ValidationFailed);
-			}
 		}
 
 		var submission = new TaskSubmission
@@ -105,12 +106,90 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			TaskId = taskId,
 			UserId = actorUserId,
 			SubmittedAt = model.SubmittedAt,
-			ProofText = model.ProofText,
+			DecisionStatus = TaskSubmissionDecisionStatus.InProgress,
+			ProofText = null,
 		};
 
 		_db.TaskSubmissions.Add(submission);
 
-		foreach(var imageId in photoIds)
+		await _db.SaveChangesAsync(cancellationToken);
+		return TaskSubmitOperationResult.Created();
+	}
+
+	public async Task<TaskOperationResult> SubmitForReviewAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	{
+		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!ok)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
+		}
+
+		var submission = await _db.TaskSubmissions
+			.Include(x => x.PhotoImages)
+			.FirstOrDefaultAsync(x => x.Id == submissionId && x.UserId == actorUserId, cancellationToken);
+		if(submission is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == submission.TaskId, cancellationToken);
+		if(task is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
+		}
+
+		if(string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
+		}
+
+		if(string.Equals(task.Status, TaskStatus.Closed, StringComparison.Ordinal))
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
+		}
+
+		if(!string.Equals(submission.DecisionStatus, TaskSubmissionDecisionStatus.InProgress, StringComparison.Ordinal))
+		{
+			return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		var newPhotoIds = (model.PhotoImageIds ?? Array.Empty<Guid>())
+			.Where(x => x != Guid.Empty)
+			.Distinct()
+			.ToArray();
+
+		if(newPhotoIds.Length > 0)
+		{
+			var count = await _db.Images.AsNoTracking()
+				.Where(i => newPhotoIds.Contains(i.Id))
+				.CountAsync(cancellationToken);
+
+			if(count != newPhotoIds.Length)
+			{
+				return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
+		}
+
+		var oldPhotoIds = submission.PhotoImages.Count == 0
+			? new HashSet<Guid>()
+			: submission.PhotoImages.Select(x => x.ImageId).ToHashSet();
+
+		submission.SubmittedAt = model.SubmittedAt;
+		submission.ProofText = model.ProofText;
+		submission.DecisionStatus = TaskSubmissionDecisionStatus.SubmittedForReview;
+		submission.DecidedByAdminId = null;
+		submission.DecidedAt = null;
+
+		var removed = oldPhotoIds.Except(newPhotoIds).ToArray();
+		if(removed.Length > 0)
+		{
+			await _db.TaskSubmissionImages
+				.Where(x => x.SubmissionId == submission.Id && removed.Contains(x.ImageId))
+				.ExecuteDeleteAsync(cancellationToken);
+		}
+
+		var added = newPhotoIds.Except(oldPhotoIds).ToArray();
+		foreach(var imageId in added)
 		{
 			_db.TaskSubmissionImages.Add(new TaskSubmissionImage
 			{
@@ -120,7 +199,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		await _db.SaveChangesAsync(cancellationToken);
-		return TaskSubmitOperationResult.Created();
+		return TaskOperationResult.Success();
 	}
 
 	public async Task<TaskOperationResult> DeleteSubmissionAsync(
@@ -172,7 +251,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
 		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
 		if(!ok)
@@ -180,7 +259,14 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
 		}
 
-		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
+		var existing = await _db.TaskSubmissions
+			.FirstOrDefaultAsync(x => x.Id == submissionId && x.UserId == actorUserId, cancellationToken);
+		if(existing is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == existing.TaskId, cancellationToken);
 		if(task is null)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
@@ -190,24 +276,25 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			_logger.LogWarning("UpdateSubmission rejected: task has auto verification type. ActorUserId={ActorUserId}, TaskId={TaskId}.",
 				actorUserId,
-				taskId);
+				existing.TaskId);
 			return TaskOperationResult.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
 		}
 
-		if(task.Status == TaskStatus.Closed)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
-		}
-
-		var existing = await _db.TaskSubmissions
-			.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
-		if(existing is null)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
-		}
-		if(existing.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
+		if(string.Equals(existing.DecisionStatus, TaskSubmissionDecisionStatus.Approve, StringComparison.Ordinal))
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
+		}
+
+		var isRejected = string.Equals(existing.DecisionStatus, TaskSubmissionDecisionStatus.Rejected, StringComparison.Ordinal);
+		var isSubmittedForReview = string.Equals(existing.DecisionStatus, TaskSubmissionDecisionStatus.SubmittedForReview, StringComparison.Ordinal);
+		if(!isRejected && !isSubmittedForReview)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		if(string.Equals(task.Status, TaskStatus.Closed, StringComparison.Ordinal) && !isRejected)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
 		}
 
 		HashSet<Guid>? oldPhotoIds = null;
@@ -236,7 +323,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					_logger.LogWarning(
 						"UpdateSubmission rejected: some PhotoImageIds not found. ActorUserId={ActorUserId}, TaskId={TaskId}.",
 						actorUserId,
-						taskId);
+						existing.TaskId);
 					return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
 				}
 			}
@@ -244,6 +331,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		existing.SubmittedAt = model.SubmittedAt;
 		existing.ProofText = model.ProofText;
+
+		if(isRejected)
+		{
+			existing.DecisionStatus = TaskSubmissionDecisionStatus.SubmittedForReview;
+			existing.DecidedByAdminId = null;
+			existing.DecidedAt = null;
+		}
 
 		if(newPhotoIds is not null)
 		{
@@ -282,8 +376,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 		var list = await _db.TaskSubmissions.AsNoTracking()
 			.Where(x => x.TaskId == taskId
-				&& (x.DecisionStatus == null
-					|| x.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Rejected))
+			   && (x.DecisionStatus == TaskSubmissionDecisionStatus.InProgress
+				   || x.DecisionStatus == TaskSubmissionDecisionStatus.SubmittedForReview
+				   || x.DecisionStatus == TaskSubmissionDecisionStatus.Rejected))
 			.Join(_db.Users.AsNoTracking(),
 				s => s.UserId,
 				u => u.Id,
@@ -391,38 +486,44 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			ToSubmissionModel(submission)));
 	}
 
-	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorUserPassword, Guid taskId, Guid userId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
 	{
-		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+		var submission = await _db.TaskSubmissions
+			.FirstOrDefaultAsync(x => x.Id == submissionId, cancellationToken);
+		if(submission is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, submission.TaskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
 		{
 			return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
 		}
 
-		var verificationType = await _db.Tasks.AsNoTracking()
-			.Where(x => x.Id == taskId)
-			.Select(x => x.VerificationType)
-			.FirstOrDefaultAsync(cancellationToken);
+		var taskMeta = await _db.Tasks.AsNoTracking()
+			.Where(x => x.Id == submission.TaskId)
+			.Select(x => new { x.VerificationType, x.Status })
+ 			.FirstOrDefaultAsync(cancellationToken);
 
-		if(verificationType is null)
+		if(taskMeta is null)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		if(string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		if(string.Equals(taskMeta.Status, TaskStatus.Closed, StringComparison.Ordinal))
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
+		}
+
+		if(string.Equals(taskMeta.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
 		{
 			_logger.LogWarning("Approve rejected: task has auto verification type. ActorUserId={ActorUserId}, TaskId={TaskId}.",
 				actorUserId,
-				taskId);
+				submission.TaskId);
 			return TaskOperationResult.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
 		}
 
-		var submission = await _db.TaskSubmissions
-			.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == userId, cancellationToken);
-		if(submission is null)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
-		}
 		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.AlreadySubmitted);
@@ -435,37 +536,42 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorUserPassword, Guid taskId, Guid userId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
 	{
-		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+		var submission = await _db.TaskSubmissions
+			.FirstOrDefaultAsync(x => x.Id == submissionId, cancellationToken);
+		if(submission is null)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, submission.TaskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
 		{
 			return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
 		}
 
-		var verificationType = await _db.Tasks.AsNoTracking()
-			.Where(x => x.Id == taskId)
-			.Select(x => x.VerificationType)
+		var taskMeta = await _db.Tasks.AsNoTracking()
+			.Where(x => x.Id == submission.TaskId)
+			.Select(x => new { x.VerificationType, x.Status })
 			.FirstOrDefaultAsync(cancellationToken);
 
-		if(verificationType is null)
+		if(taskMeta is null)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		if(string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		if(string.Equals(taskMeta.Status, TaskStatus.Closed, StringComparison.Ordinal))
+		{
+			return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
+		}
+
+		if(string.Equals(taskMeta.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
 		{
 			_logger.LogWarning("Reject rejected: task has auto verification type. ActorUserId={ActorUserId}, TaskId={TaskId}.",
 				actorUserId,
-				taskId);
+				submission.TaskId);
 			return TaskOperationResult.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
-		}
-
-		var submission = await _db.TaskSubmissions
-			.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == userId, cancellationToken);
-		if(submission is null)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
 
 		if(submission.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)
@@ -614,9 +720,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 	{
 		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.InProgress, StringComparison.Ordinal))
 		{
-			return query.Where(s =>
-				s.DecisionStatus == null
-				|| s.DecisionStatus == TaskSubmissionDecisionStatus.InProgress);
+			return query.Where(s => s.DecisionStatus == TaskSubmissionDecisionStatus.InProgress);
+		}
+
+		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.SubmittedForReview, StringComparison.Ordinal))
+		{
+			return query.Where(s => s.DecisionStatus == TaskSubmissionDecisionStatus.SubmittedForReview);
 		}
 
 		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.Approve, StringComparison.Ordinal))

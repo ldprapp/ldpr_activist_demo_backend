@@ -5,7 +5,7 @@ public sealed record TaskSubmissionModel(
 	Guid TaskId,
 	Guid UserId,
 	DateTimeOffset SubmittedAt,
-	string? DecisionStatus,
+	string DecisionStatus,
 	Guid? DecidedByAdminId,
 	DateTimeOffset? DecidedAt,
 	IReadOnlyList<Guid>? PhotoImageIds,
