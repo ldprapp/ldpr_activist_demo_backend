@@ -159,6 +159,18 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
+		if(request.RewardPoints < 0)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["rewardPoints"] = new[] { "RewardPoints must be non-negative." },
+				},
+				title: "Некорректный запрос.",
+				detail: "Награда (rewardPoints) не может быть отрицательной.");
+		}
+
 		if(!TryNormalizeTaskVerificationTypeForCreate(request.VerificationType, out var verificationType, out var verificationTypeError))
 		{
 			return this.ValidationProblemWithCode(
@@ -268,6 +280,18 @@ public sealed class TasksController : ControllerBase
 		if(invalid is not null)
 		{
 			return invalid;
+		}
+
+		if(request.RewardPoints < 0)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["rewardPoints"] = new[] { "RewardPoints must be non-negative." },
+				},
+				title: "Некорректный запрос.",
+				detail: "Награда (rewardPoints) не может быть отрицательной.");
 		}
 
 		if(!TryNormalizeTaskVerificationTypeForUpdate(request.VerificationType, out var verificationType, out var verificationTypeError))

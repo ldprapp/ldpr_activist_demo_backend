@@ -11,5 +11,4 @@ public sealed record UserPublicModel(
 	int RegionId,
 	int CityId,
 	bool IsPhoneConfirmed,
-	int Points,
 	string? AvatarImageUrl);

@@ -10,10 +10,7 @@ public sealed record UserDto(
 	DateOnly BirthDate,
 	int RegionId,
 	int CityId,
-	bool IsPhoneConfirmed,
-	int Points)
+	bool IsPhoneConfirmed)
 {
-	/// <summary>Идентификатор аватарки пользователя (Guid в строке) или <c>null</c>, если аватарки нет.</summary>
-	/// <remarks>Получение бинарных данных: <c>GET /api/v1/images/{id}</c>.</remarks>
 	public string? AvatarImageUrl { get; init; }
 }

@@ -109,9 +109,10 @@ public sealed class UserRepository : IUserRepository
 			throw new InvalidOperationException("PhoneNumber already exists.");
 		}
 
+		var userId = Guid.NewGuid();
 		var entity = new User
 		{
-			Id = Guid.NewGuid(),
+			Id = userId,
 			LastName = model.LastName,
 			FirstName = model.FirstName,
 			MiddleName = model.MiddleName,
@@ -123,13 +124,20 @@ public sealed class UserRepository : IUserRepository
 			CityId = model.CityId,
 			IsAdmin = false,
 			IsPhoneConfirmed = false,
-			Points = 0,
 			AvatarImageUrl = model.AvatarImageId.HasValue && model.AvatarImageId.Value != Guid.Empty
 				? model.AvatarImageId.Value.ToString("D")
 				: null,
 		};
 
 		_db.Users.Add(entity);
+		_db.UserPointsTransactions.Add(new UserPointsTransaction
+		{
+			Id = Guid.NewGuid(),
+			UserId = userId,
+			Amount = 0,
+			TransactionAt = DateTimeOffset.UtcNow,
+			Comment = "User initialization transaction.",
+		});
 		await _db.SaveChangesAsync(cancellationToken);
 		return entity.Id;
 	}
@@ -284,7 +292,6 @@ public sealed class UserRepository : IUserRepository
 				x.RegionId,
 				x.CityId,
 				x.IsPhoneConfirmed,
-				x.Points,
 				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
@@ -305,7 +312,6 @@ public sealed class UserRepository : IUserRepository
 				x.RegionId,
 				x.CityId,
 				x.IsPhoneConfirmed,
-				x.Points,
 				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
@@ -326,7 +332,6 @@ public sealed class UserRepository : IUserRepository
 				x.RegionId,
 				x.CityId,
 				x.IsPhoneConfirmed,
-				x.Points,
 				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
@@ -372,7 +377,6 @@ public sealed class UserRepository : IUserRepository
 				u.RegionId,
 				u.CityId,
 				u.IsPhoneConfirmed,
-				u.Points,
 				u.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
@@ -384,13 +388,20 @@ public sealed class UserRepository : IUserRepository
 			throw new ArgumentOutOfRangeException(nameof(pointsToAdd));
 		}
 
-		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
-		if(u is null)
+		var exists = await _db.Users.AsNoTracking().AnyAsync(x => x.Id == userId, cancellationToken);
+		if(!exists)
 		{
 			return false;
 		}
 
-		u.Points += pointsToAdd;
+		_db.UserPointsTransactions.Add(new UserPointsTransaction
+		{
+			Id = Guid.NewGuid(),
+			UserId = userId,
+			Amount = pointsToAdd,
+			TransactionAt = DateTimeOffset.UtcNow,
+			Comment = "Points credited.",
+		});
 		await _db.SaveChangesAsync(cancellationToken);
 		return true;
 	}
@@ -427,7 +438,6 @@ public sealed class UserRepository : IUserRepository
 			u.CityId,
 			u.IsAdmin,
 			u.IsPhoneConfirmed,
-			u.Points,
 			u.AvatarImageUrl);
 
 	private static UserPublicModel ToPublic(User u)
@@ -442,6 +452,5 @@ public sealed class UserRepository : IUserRepository
 			u.RegionId,
 			u.CityId,
 			u.IsPhoneConfirmed,
-			u.Points,
 			u.AvatarImageUrl);
 }

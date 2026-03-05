@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
 
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
+		services.AddScoped<LdprActivistDemo.Application.UserPoints.IUserPointsService, LdprActivistDemo.Application.UserPoints.UserPointsService>();
 		services.AddScoped<ITaskService, TaskService>();
 		services.AddScoped<IImageService, ImageService>();
 

@@ -16,6 +16,7 @@ public sealed class AppDbContext : DbContext
 	public DbSet<Region> Regions => Set<Region>();
 	public DbSet<City> Cities => Set<City>();
 	public DbSet<User> Users => Set<User>();
+	public DbSet<UserPointsTransaction> UserPointsTransactions => Set<UserPointsTransaction>();
 
 	public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
 	public DbSet<TaskTrustedAdmin> TaskTrustedAdmins => Set<TaskTrustedAdmin>();
@@ -61,7 +62,6 @@ public sealed class AppDbContext : DbContext
 		{
 			b.ToTable("users", t =>
 			{
-				t.HasCheckConstraint("ck_users_points_non_negative", "\"Points\" >= 0");
 				t.HasCheckConstraint(
 					"ck_users_gender_allowed",
 					"\"Gender\" IS NULL OR \"Gender\" IN ('male','female')");
@@ -76,8 +76,6 @@ public sealed class AppDbContext : DbContext
 
 			b.Property(x => x.PasswordHash).IsRequired();
 
-			b.Property(x => x.Points).HasDefaultValue(0);
-
 			b.Property(x => x.AvatarImageUrl);
 
 			b.HasOne(x => x.Region)
@@ -89,6 +87,24 @@ public sealed class AppDbContext : DbContext
 				.WithMany()
 				.HasForeignKey(x => x.CityId)
 				.OnDelete(DeleteBehavior.Restrict);
+		});
+
+		modelBuilder.Entity<UserPointsTransaction>(b =>
+		{
+			b.ToTable("user_points_transactions");
+			b.HasKey(x => x.Id);
+
+			b.Property(x => x.UserId).IsRequired();
+			b.Property(x => x.Amount).IsRequired();
+			b.Property(x => x.TransactionAt).IsRequired();
+			b.Property(x => x.Comment).IsRequired();
+
+			b.HasOne(x => x.User)
+				.WithMany()
+				.HasForeignKey(x => x.UserId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			b.HasIndex(x => new { x.UserId, x.TransactionAt });
 		});
 
 		modelBuilder.Entity<TaskEntity>(b =>

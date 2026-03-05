@@ -724,8 +724,7 @@ public sealed class UsersController : ControllerBase
 			u.BirthDate,
 			u.RegionId,
 			u.CityId,
-			u.IsPhoneConfirmed,
-			u.Points)
+			u.IsPhoneConfirmed)
 	{
 		AvatarImageUrl = u.AvatarImageUrl,
 	};

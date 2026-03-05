@@ -13,5 +13,4 @@ public sealed record UserInternalModel(
 	int CityId,
 	bool IsAdmin,
 	bool IsPhoneConfirmed,
-	int Points,
 	string? AvatarImageUrl);

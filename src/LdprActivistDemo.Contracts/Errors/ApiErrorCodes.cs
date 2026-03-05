@@ -35,5 +35,7 @@ public static class ApiErrorCodes
 
 	public const string ImageNotFound = "image_not_found";
 
+	public const string UserPointsInsufficientBalance = "user_points_insufficient_balance";
+
 	public const string InternalError = "internal_error";
 }

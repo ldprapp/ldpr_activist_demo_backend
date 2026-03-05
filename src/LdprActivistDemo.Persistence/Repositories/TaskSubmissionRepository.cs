@@ -391,11 +391,10 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.RegionId,
 					u.CityId,
 					u.IsPhoneConfirmed,
-					u.Points,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionId, x.CityId, x.IsPhoneConfirmed, x.Points, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionId, x.CityId, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
 	}
@@ -429,11 +428,10 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.RegionId,
 					u.CityId,
 					u.IsPhoneConfirmed,
-					u.Points,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionId, x.CityId, x.IsPhoneConfirmed, x.Points, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionId, x.CityId, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
@@ -509,12 +507,22 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		var taskMeta = await _db.Tasks.AsNoTracking()
 			.Where(x => x.Id == submission.TaskId)
-			.Select(x => new { x.VerificationType, x.Status })
+			.Select(x => new { x.VerificationType, x.Status, x.RewardPoints })
  			.FirstOrDefaultAsync(cancellationToken);
 
 		if(taskMeta is null)
 		{
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
+		}
+
+		if(taskMeta.RewardPoints < 0)
+		{
+			_logger.LogWarning(
+				"Approve rejected: negative RewardPoints on task. ActorUserId={ActorUserId}, TaskId={TaskId}, RewardPoints={RewardPoints}.",
+				actorUserId,
+				submission.TaskId,
+				taskMeta.RewardPoints);
+			return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
 		}
 
 		if(string.Equals(taskMeta.Status, TaskStatus.Closed, StringComparison.Ordinal))
@@ -538,6 +546,19 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve;
 		submission.DecidedByAdminId = actorUserId;
 		submission.DecidedAt = decidedAt;
+
+		if(taskMeta.RewardPoints != 0)
+		{
+			_db.UserPointsTransactions.Add(new UserPointsTransaction
+			{
+				Id = Guid.NewGuid(),
+				UserId = submission.UserId,
+				Amount = taskMeta.RewardPoints,
+				TransactionAt = decidedAt,
+				Comment = $"Points for approval of submission {submissionId:D}.",
+			});
+		}
+
 		await _db.SaveChangesAsync(cancellationToken);
 		return TaskOperationResult.Success();
 	}

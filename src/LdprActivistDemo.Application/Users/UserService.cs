@@ -125,5 +125,5 @@ public sealed class UserService : IUserService
 		_users.GetAdminsAsync(start, end, cancellationToken);
 
 	private static UserPublicModel ToPublic(UserInternalModel u) =>
-		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.Points, u.AvatarImageUrl);
+		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.AvatarImageUrl);
 }

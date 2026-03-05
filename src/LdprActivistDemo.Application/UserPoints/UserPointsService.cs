@@ -1,0 +1,139 @@
+﻿using LdprActivistDemo.Application.UserPoints.Models;
+using LdprActivistDemo.Application.Users;
+
+namespace LdprActivistDemo.Application.UserPoints;
+
+public sealed class UserPointsService : IUserPointsService
+{
+	private readonly IUserRepository _users;
+	private readonly IUserPointsTransactionRepository _transactions;
+
+	public UserPointsService(IUserRepository users, IUserPointsTransactionRepository transactions)
+	{
+		_users = users ?? throw new ArgumentNullException(nameof(users));
+		_transactions = transactions ?? throw new ArgumentNullException(nameof(transactions));
+	}
+
+	public async Task<UserPointsResult<int>> GetBalanceAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		if(actorUserId == Guid.Empty
+		   || userId == Guid.Empty
+		   || string.IsNullOrWhiteSpace(actorUserPassword))
+		{
+			return UserPointsResult<int>.Fail(UserPointsError.ValidationFailed);
+		}
+
+		var passwordOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!passwordOk)
+		{
+			return UserPointsResult<int>.Fail(UserPointsError.InvalidCredentials);
+		}
+
+		if(actorUserId != userId)
+		{
+			var isAdmin = await _users.IsAdminAsync(actorUserId, cancellationToken);
+			if(!isAdmin)
+			{
+				return UserPointsResult<int>.Fail(UserPointsError.Forbidden);
+			}
+		}
+
+		var balance = await _transactions.GetBalanceAsync(userId, cancellationToken);
+		return balance is null
+			? UserPointsResult<int>.Fail(UserPointsError.UserNotFound)
+			: UserPointsResult<int>.Ok(balance.Value);
+	}
+
+	public async Task<UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>> GetTransactionsAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		if(actorUserId == Guid.Empty
+		   || userId == Guid.Empty
+		   || string.IsNullOrWhiteSpace(actorUserPassword))
+		{
+			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.ValidationFailed);
+		}
+
+		var passwordOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!passwordOk)
+		{
+			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.InvalidCredentials);
+		}
+
+		if(actorUserId != userId)
+		{
+			var isAdmin = await _users.IsAdminAsync(actorUserId, cancellationToken);
+			if(!isAdmin)
+			{
+				return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.Forbidden);
+			}
+		}
+
+		var list = await _transactions.GetTransactionsAsync(userId, excludeInitialization: true, cancellationToken);
+		return list is null
+			? UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.UserNotFound)
+			: UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Ok(list);
+	}
+
+	public async Task<UserPointsResult<Guid>> CreateTransactionAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		int amount,
+		string comment,
+		CancellationToken cancellationToken)
+	{
+		comment = (comment ?? string.Empty).Trim();
+
+		if(actorUserId == Guid.Empty
+		   || userId == Guid.Empty
+		   || string.IsNullOrWhiteSpace(actorUserPassword)
+		   || amount == 0
+		   || comment.Length == 0)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+		}
+
+		var passwordOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!passwordOk)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.InvalidCredentials);
+		}
+
+		var isAdmin = await _users.IsAdminAsync(actorUserId, cancellationToken);
+		if(!isAdmin)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.Forbidden);
+		}
+
+		var currentBalance = await _transactions.GetBalanceAsync(userId, cancellationToken);
+		if(currentBalance is null)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound);
+		}
+
+		var nextBalance = currentBalance.Value + amount;
+		if(nextBalance < 0)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.InsufficientBalance);
+		}
+
+		var id = await _transactions.CreateAsync(
+			userId,
+			amount,
+			comment,
+			DateTimeOffset.UtcNow,
+			cancellationToken);
+
+		return id is null
+			? UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound)
+			: UserPointsResult<Guid>.Ok(id.Value);
+	}
+}
