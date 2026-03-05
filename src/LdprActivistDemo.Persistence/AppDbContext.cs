@@ -106,6 +106,14 @@ public sealed class AppDbContext : DbContext
 				t.HasCheckConstraint(
 				"ck_tasks_verification_type_allowed",
 				$"\"VerificationType\" IN ('{TaskVerificationType.Auto}','{TaskVerificationType.Manual}')");
+
+				t.HasCheckConstraint(
+					"ck_tasks_reuse_type_allowed",
+					$"\"ReuseType\" IN ('{TaskReuseType.Disposable}','{TaskReuseType.Reusable}')");
+
+				t.HasCheckConstraint(
+					"ck_tasks_auto_verification_action_type_allowed",
+					$"(\"VerificationType\" = '{TaskVerificationType.Manual}' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = '{TaskVerificationType.Auto}' AND \"AutoVerificationActionType\" IN ('{TaskAutoVerificationActionType.InviteFriend}'))");
 			});
 			b.HasKey(x => x.Id);
 
@@ -120,6 +128,12 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.VerificationType)
 				.IsRequired()
 				.HasDefaultValue(TaskVerificationType.Manual);
+
+			b.Property(x => x.ReuseType)
+				.IsRequired()
+				.HasDefaultValue(TaskReuseType.Disposable);
+
+			b.Property(x => x.AutoVerificationActionType);
 
 			b.Property(x => x.CoverImageId);
 			b.HasOne<ImageEntity>()
@@ -175,7 +189,7 @@ public sealed class AppDbContext : DbContext
 			   .IsRequired()
 			   .HasDefaultValue(TaskSubmissionDecisionStatus.InProgress);
 
-			b.HasIndex(x => new { x.TaskId, x.UserId }).IsUnique();
+			b.HasIndex(x => new { x.TaskId, x.UserId });
 
 			b.HasOne(x => x.Task)
 				.WithMany()

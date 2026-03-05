@@ -12,4 +12,6 @@ public sealed record TaskCreateModel(
 	int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid> TrustedAdminIds,
-	string VerificationType);
+	string VerificationType,
+	string ReuseType,
+	string? AutoVerificationActionType);

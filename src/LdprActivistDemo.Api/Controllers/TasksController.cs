@@ -3,10 +3,8 @@ using LdprActivistDemo.Api.Helpers;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
-using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Tasks;
-using LdprActivistDemo.Contracts.Users;
 
 using Microsoft.AspNetCore.Mvc;
 
@@ -170,7 +168,35 @@ public sealed class TasksController : ControllerBase
 					["verificationType"] = new[] { verificationTypeError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр verificationType допускает только значения 'auto' или 'manual' (или пустое значение, чтобы использовать 'manual').");
+				detail: "Параметр verificationType допускает только значения 'auto' или 'manual'.");
+		}
+
+		if(!TryNormalizeTaskReuseTypeForCreate(request.ReuseType, out var reuseType, out var reuseTypeError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["reuseType"] = new[] { reuseTypeError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр reuseType допускает только значения 'disposable' или 'reusable'.");
+		}
+
+		if(!TryNormalizeTaskAutoVerificationActionTypeForCreate(
+			request.AutoVerificationActionType,
+			verificationType,
+			out var autoVerificationActionType,
+			out var autoVerificationActionTypeError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["autoVerificationActionType"] = new[] { autoVerificationActionTypeError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр autoVerificationActionType обязателен для verificationType='auto' и допускает только 'invite_friend'.");
 		}
 
 		Guid? coverImageId = null;
@@ -205,7 +231,9 @@ public sealed class TasksController : ControllerBase
 			request.RegionId,
 			request.CityId,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
-			verificationType);
+			verificationType,
+			reuseType,
+			autoVerificationActionType);
 
 		var result = await _tasks.CreateAsync(actorUserId, actorUserPassword!, model, cancellationToken);
 		if(!result.IsSuccess)
@@ -251,7 +279,35 @@ public sealed class TasksController : ControllerBase
 					["verificationType"] = new[] { verificationTypeError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр verificationType допускает только значения 'auto' или 'manual' (или пустое значение, чтобы не менять поле).");
+				detail: "Параметр verificationType допускает только значения 'auto' или 'manual'.");
+		}
+
+		if(!TryNormalizeTaskReuseTypeForUpdate(request.ReuseType, out var reuseType, out var reuseTypeError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["reuseType"] = new[] { reuseTypeError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр reuseType допускает только значения 'disposable' или 'reusable'.");
+		}
+
+		if(!TryNormalizeTaskAutoVerificationActionTypeForUpdate(
+			request.AutoVerificationActionType,
+			verificationType,
+			out var autoVerificationActionType,
+			out var autoVerificationActionTypeError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["autoVerificationActionType"] = new[] { autoVerificationActionTypeError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр autoVerificationActionType допускает только поддерживаемые значения. Для verificationType='manual' игнорируется и сохраняется NULL.");
 		}
 
 		Guid? coverImageId = null;
@@ -286,7 +342,9 @@ public sealed class TasksController : ControllerBase
 			request.RegionId,
 			request.CityId,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
-			verificationType);
+			verificationType,
+			reuseType,
+			autoVerificationActionType);
 
 		var result = await _tasks.UpdateAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
@@ -572,7 +630,7 @@ public sealed class TasksController : ControllerBase
 		return StatusCode(StatusCodes.Status201Created);
 	}
 
-	[HttpPost("submissions/submit/{submissionId:guid}/for-review")]
+	[HttpPost("submissions/submit/{submitId:guid}/for-review")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -580,7 +638,7 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> SubmitForReviewAsync(
-		[FromRoute] Guid submissionId,
+		[FromRoute] Guid submitId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromForm] SubmitTaskFormRequest request,
@@ -623,11 +681,11 @@ public sealed class TasksController : ControllerBase
 			ProofText: request.ProofText,
 			SubmittedAt: DateTimeOffset.UtcNow);
 
-		var result = await _tasks.SubmitForReviewAsync(actorUserId, actorUserPassword!, submissionId, model, cancellationToken);
+		var result = await _tasks.SubmitForReviewAsync(actorUserId, actorUserPassword!, submitId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpPut("submissions/submit/{submissionId:guid}")]
+	[HttpPut("submissions/submit/{submitId:guid}")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -635,7 +693,7 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> UpdateSubmissionAsync(
-		[FromRoute] Guid submissionId,
+		[FromRoute] Guid submitId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromForm] SubmitTaskFormRequest request,
@@ -678,7 +736,7 @@ public sealed class TasksController : ControllerBase
 			ProofText: request.ProofText,
 			SubmittedAt: DateTimeOffset.UtcNow);
 
-		var result = await _tasks.UpdateSubmissionAsync(actorUserId, actorUserPassword!, submissionId, model, cancellationToken);
+		var result = await _tasks.UpdateSubmissionAsync(actorUserId, actorUserPassword!, submitId, model, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
@@ -812,13 +870,13 @@ public sealed class TasksController : ControllerBase
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
-	[HttpGet("submit/{submissionId:guid}")]
+	[HttpGet("submit/{submitId:guid}")]
 	[ProducesResponseType(typeof(SubmissionDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	public async Task<IActionResult> GetSubmissionByIdAsync(
-		[FromRoute] Guid submissionId,
+		[FromRoute] Guid submitId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
@@ -829,7 +887,7 @@ public sealed class TasksController : ControllerBase
 			return invalidActor;
 		}
 
-		var result = await _tasks.GetSubmissionByIdAsync(actorUserId, actorUserPassword!, submissionId, cancellationToken);
+		var result = await _tasks.GetSubmissionByIdAsync(actorUserId, actorUserPassword!, submitId, cancellationToken);
 		if(!result.IsSuccess || result.Value is null)
 		{
 			return MapTaskError(result.Error);
@@ -838,7 +896,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
-	[HttpPost("submit/{submissionId:guid}/approve")]
+	[HttpPost("submit/{submitId:guid}/approve")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -846,7 +904,7 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> ApproveAsync(
-		[FromRoute] Guid submissionId,
+		[FromRoute] Guid submitId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
@@ -857,11 +915,11 @@ public sealed class TasksController : ControllerBase
 			return invalidActor;
 		}
 
-		var result = await _tasks.ApproveAsync(actorUserId, actorUserPassword!, submissionId, cancellationToken);
+		var result = await _tasks.ApproveAsync(actorUserId, actorUserPassword!, submitId, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpPost("submit/{submissionId:guid}/reject")]
+	[HttpPost("submit/{submitId:guid}/reject")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -869,7 +927,7 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> RejectAsync(
-		[FromRoute] Guid submissionId,
+		[FromRoute] Guid submitId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
@@ -880,7 +938,7 @@ public sealed class TasksController : ControllerBase
 			return invalidActor;
 		}
 
-		var result = await _tasks.RejectAsync(actorUserId, actorUserPassword!, submissionId, cancellationToken);
+		var result = await _tasks.RejectAsync(actorUserId, actorUserPassword!, submitId, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
@@ -891,6 +949,8 @@ public sealed class TasksController : ControllerBase
 		public string? RequirementsText { get; set; }
 		public int RewardPoints { get; set; }
 		public string? VerificationType { get; set; }
+		public string? ReuseType { get; set; }
+		public string? AutoVerificationActionType { get; set; }
 
 		public IFormFile? CoverImage { get; set; }
 
@@ -908,6 +968,8 @@ public sealed class TasksController : ControllerBase
 		public string? RequirementsText { get; set; }
 		public int RewardPoints { get; set; }
 		public string? VerificationType { get; set; }
+		public string? ReuseType { get; set; }
+		public string? AutoVerificationActionType { get; set; }
 
 		public IFormFile? CoverImage { get; set; }
 
@@ -1165,16 +1227,12 @@ public sealed class TasksController : ControllerBase
 	private static bool TryNormalizeTaskVerificationTypeForCreate(string? raw, out string normalized, out string? error)
 	{
 		error = null;
-		normalized = TaskVerificationType.Manual;
+		normalized = string.Empty;
 
 		if(string.IsNullOrWhiteSpace(raw))
 		{
-			return true;
-		}
-
-		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
-		{
-			return true;
+			error = "VerificationType must be 'auto' or 'manual'.";
+			return false;
 		}
 
 		var token = raw.Trim().ToLowerInvariant();
@@ -1191,7 +1249,137 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
-		error = "VerificationType must be 'auto' or 'manual' (or be empty).";
+		error = "VerificationType must be 'auto' or 'manual'.";
+		return false;
+	}
+
+	private static bool TryNormalizeTaskReuseTypeForCreate(string? raw, out string normalized, out string? error)
+	{
+		error = null;
+		normalized = string.Empty;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			error = "ReuseType must be 'disposable' or 'reusable'.";
+			return false;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskReuseType.Disposable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Disposable;
+			return true;
+		}
+
+		if(string.Equals(token, TaskReuseType.Reusable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Reusable;
+			return true;
+		}
+
+		error = "ReuseType must be 'disposable' or 'reusable'.";
+		return false;
+	}
+
+	private static bool TryNormalizeTaskReuseTypeForUpdate(string? raw, out string? normalized, out string? error)
+	{
+		error = null;
+		normalized = string.Empty;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			error = "ReuseType must be 'disposable' or 'reusable'.";
+			return false;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskReuseType.Disposable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Disposable;
+			return true;
+		}
+
+		if(string.Equals(token, TaskReuseType.Reusable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Reusable;
+			return true;
+		}
+
+		error = "ReuseType must be 'disposable' or 'reusable'.";
+		return false;
+	}
+
+	private static bool TryNormalizeTaskAutoVerificationActionTypeForCreate(
+		string? raw,
+		string normalizedVerificationType,
+		out string? normalized,
+		out string? error)
+	{
+		error = null;
+		normalized = null;
+
+		if(string.Equals(normalizedVerificationType, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		if(string.IsNullOrWhiteSpace(raw) || string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			error = "AutoVerificationActionType is required when verificationType is 'auto'.";
+			return false;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.InviteFriend;
+			return true;
+		}
+
+		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}'.";
+		return false;
+	}
+
+	private static bool TryNormalizeTaskAutoVerificationActionTypeForUpdate(
+		string? raw,
+		string? normalizedVerificationType,
+		out string? normalized,
+		out string? error)
+	{
+		error = null;
+		normalized = null;
+
+		if(string.Equals(normalizedVerificationType, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		if(string.Equals(normalizedVerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			if(string.IsNullOrWhiteSpace(raw) || string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+			{
+				error = "AutoVerificationActionType is required when verificationType is set to 'auto'.";
+				return false;
+			}
+		}
+
+		if(string.IsNullOrWhiteSpace(raw) || string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.InviteFriend;
+			return true;
+		}
+
+		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}'.";
 		return false;
 	}
 
@@ -1331,24 +1519,9 @@ public sealed class TasksController : ControllerBase
 			t.RegionId,
 			t.CityId,
 			t.TrustedAdminIds,
-			t.VerificationType);
-
-	private static UserDto ToPublicDto(UserPublicModel u)
-		=> new(
-				u.Id,
-				u.LastName,
-				u.FirstName,
-				u.MiddleName,
-				u.Gender,
-				u.PhoneNumber,
-				u.BirthDate,
-				u.RegionId,
-				u.CityId,
-				u.IsPhoneConfirmed,
-				u.Points)
-		{
-			AvatarImageUrl = u.AvatarImageUrl,
-		};
+			t.VerificationType,
+			t.ReuseType,
+			t.AutoVerificationActionType);
 
 	private static SubmissionDto ToDto(TaskSubmissionModel s)
 		=> new(

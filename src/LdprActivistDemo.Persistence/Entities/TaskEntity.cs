@@ -32,6 +32,10 @@ public sealed class TaskEntity
 
 	public string VerificationType { get; set; } = TaskVerificationType.Manual;
 
+	public string ReuseType { get; set; } = TaskReuseType.Disposable;
+
+	public string? AutoVerificationActionType { get; set; }
+
 	public int RegionId { get; set; }
 
 	public Region Region { get; set; } = null!;

@@ -64,6 +64,34 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
 		}
 
+		if(!TryNormalizeReuseTypeForCreate(model.ReuseType, out var reuseType))
+		{
+			_logger.LogWarning("CreateTask rejected: invalid ReuseType. ActorUserId={ActorUserId}, ReuseType={ReuseType}.",
+				actorUserId,
+				model.ReuseType);
+			return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		string? autoVerificationActionType = null;
+
+		if(string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			if(string.IsNullOrWhiteSpace(model.AutoVerificationActionType) || string.Equals(model.AutoVerificationActionType, "string", StringComparison.OrdinalIgnoreCase))
+			{
+				_logger.LogWarning("CreateTask rejected: AutoVerificationActionType is required for auto verification. ActorUserId={ActorUserId}.", actorUserId);
+				return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+			}
+
+			if(!TryNormalizeAutoVerificationActionType(model.AutoVerificationActionType, out var normalizedAutoVerificationActionType))
+			{
+				_logger.LogWarning("CreateTask rejected: invalid AutoVerificationActionType. ActorUserId={ActorUserId}, AutoVerificationActionType={AutoVerificationActionType}.",
+					actorUserId, model.AutoVerificationActionType);
+				return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+			}
+
+			autoVerificationActionType = normalizedAutoVerificationActionType;
+		}
+
 		var trustedAdminIds = model.TrustedAdminIds
 			.Where(x => x != Guid.Empty)
 			.Distinct()
@@ -100,6 +128,8 @@ public sealed class TaskRepository : ITaskRepository
 			DeadlineAt = model.DeadlineAt ?? model.PublishedAt,
 			Status = TaskStatus.Open,
 			VerificationType = verificationType,
+			ReuseType = reuseType,
+			AutoVerificationActionType = autoVerificationActionType,
 			RegionId = model.RegionId,
 			CityId = model.CityId,
 		};
@@ -134,6 +164,8 @@ public sealed class TaskRepository : ITaskRepository
 		{
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
 		}
+
+		var previousVerificationType = task.VerificationType;
 
 		var isAuthor = task.AuthorUserId == actorUserId;
 
@@ -182,6 +214,57 @@ public sealed class TaskRepository : ITaskRepository
 			}
 
 			task.VerificationType = verificationType;
+		}
+
+		if(model.ReuseType is not null)
+		{
+			if(!TryNormalizeReuseTypeForUpdate(model.ReuseType, out var reuseType))
+			{
+				_logger.LogWarning("UpdateTask rejected: invalid ReuseType. ActorUserId={ActorUserId}, TaskId={TaskId}, ReuseType={ReuseType}.",
+					actorUserId,
+					taskId,
+					model.ReuseType);
+				return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
+
+			task.ReuseType = reuseType;
+		}
+
+		var effectiveVerificationType = task.VerificationType;
+
+		if(string.Equals(effectiveVerificationType, TaskVerificationType.Manual, StringComparison.Ordinal))
+		{
+			task.AutoVerificationActionType = null;
+		}
+		else
+		{
+			var switchedToAuto = !string.Equals(previousVerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+				&& string.Equals(effectiveVerificationType, TaskVerificationType.Auto, StringComparison.Ordinal);
+
+			if(!string.IsNullOrWhiteSpace(model.AutoVerificationActionType) && !string.Equals(model.AutoVerificationActionType, "string", StringComparison.OrdinalIgnoreCase))
+			{
+				if(!TryNormalizeAutoVerificationActionType(model.AutoVerificationActionType, out var normalizedAutoVerificationActionType))
+				{
+					_logger.LogWarning("UpdateTask rejected: invalid AutoVerificationActionType. ActorUserId={ActorUserId}, TaskId={TaskId}, AutoVerificationActionType={AutoVerificationActionType}.",
+						actorUserId, taskId, model.AutoVerificationActionType);
+					return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				task.AutoVerificationActionType = normalizedAutoVerificationActionType;
+			}
+			else if(switchedToAuto)
+			{
+				_logger.LogWarning("UpdateTask rejected: AutoVerificationActionType is required when switching to auto verification. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+					actorUserId, taskId);
+				return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
+
+			if(task.AutoVerificationActionType is null)
+			{
+				_logger.LogWarning("UpdateTask rejected: AutoVerificationActionType must be set for auto verification. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+					actorUserId, taskId);
+				return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
 		}
 
 		var trustedAdminIds = model.TrustedAdminIds
@@ -589,6 +672,88 @@ public sealed class TaskRepository : ITaskRepository
 		return false;
 	}
 
+	private static bool TryNormalizeReuseTypeForCreate(string? raw, out string normalized)
+	{
+		normalized = TaskReuseType.Disposable;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return true;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskReuseType.Disposable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Disposable;
+			return true;
+		}
+
+		if(string.Equals(token, TaskReuseType.Reusable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Reusable;
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool TryNormalizeReuseTypeForUpdate(string raw, out string normalized)
+	{
+		normalized = TaskReuseType.Disposable;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return false;
+		}
+
+		if(string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskReuseType.Disposable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Disposable;
+			return true;
+		}
+
+		if(string.Equals(token, TaskReuseType.Reusable, StringComparison.Ordinal))
+		{
+			normalized = TaskReuseType.Reusable;
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool TryNormalizeAutoVerificationActionType(string raw, out string normalized)
+	{
+		normalized = TaskAutoVerificationActionType.InviteFriend;
+
+		if(string.IsNullOrWhiteSpace(raw))
+		{
+			return false;
+		}
+
+		var token = raw.Trim().ToLowerInvariant();
+
+		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.InviteFriend;
+			return true;
+		}
+
+		return false;
+	}
+
 	private static TaskModel ToModel(TaskEntity t, IReadOnlyList<Guid> trustedAdminIds)
 		=> new(
 			t.Id,
@@ -605,5 +770,7 @@ public sealed class TaskRepository : ITaskRepository
 			t.RegionId,
 			t.CityId,
 			trustedAdminIds,
-			t.VerificationType);
+			t.VerificationType,
+			t.ReuseType,
+			t.AutoVerificationActionType);
 }

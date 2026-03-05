@@ -52,13 +52,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		if(string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
-		{
-			_logger.LogWarning("SubmitTask rejected: task has auto verification type. ActorUserId={ActorUserId}, TaskId={TaskId}.",
-				actorUserId,
-				taskId);
-			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
-		}
+		var isReusable = string.Equals(task.ReuseType, TaskReuseType.Reusable, StringComparison.Ordinal);
 
 		if(string.Equals(task.Status, TaskStatus.Closed, StringComparison.Ordinal))
 		{
@@ -89,15 +83,18 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			}
 		}
 
-		var existing = await _db.TaskSubmissions
-		   .AsNoTracking()
-		   .FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
-
-		if(existing is not null)
+		if(!isReusable)
 		{
-			return TaskSubmitOperationResult.Fail(existing.DecisionStatus == TaskSubmissionDecisionStatus.Approve
-				? TaskOperationError.AlreadySubmitted
-				: TaskOperationError.SubmissionAlreadyExists);
+			var existing = await _db.TaskSubmissions
+				.AsNoTracking()
+				.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
+
+			if(existing is not null)
+			{
+				return TaskSubmitOperationResult.Fail(existing.DecisionStatus == TaskSubmissionDecisionStatus.Approve
+					? TaskOperationError.AlreadySubmitted
+					: TaskOperationError.SubmissionAlreadyExists);
+			}
 		}
 
 		var submission = new TaskSubmission
@@ -461,10 +458,19 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			}
 		}
 
-		var taskExists = await _db.Tasks.AsNoTracking().AnyAsync(x => x.Id == taskId, cancellationToken);
-		if(!taskExists)
+		var taskMeta = await _db.Tasks.AsNoTracking()
+			.Where(x => x.Id == taskId)
+			.Select(x => new { x.Id, x.VerificationType })
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if(taskMeta is null)
 		{
 			return TaskOperationResult<SubmissionUserViewModel>.Fail(TaskOperationError.TaskNotFound);
+		}
+
+		if(string.Equals(taskMeta.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			return TaskOperationResult<SubmissionUserViewModel>.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
 		}
 
 		var submission = await _db.TaskSubmissions.AsNoTracking()
@@ -618,6 +624,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			.Where(t =>
 				t.AuthorUserId == actorUserId
 				|| _db.TaskTrustedAdmins.AsNoTracking().Any(x => x.TaskId == t.Id && x.AdminUserId == actorUserId))
+			.Where(t => t.VerificationType != TaskVerificationType.Auto)
 			.Select(t => t.Id);
 
 		if(taskId.HasValue)
@@ -627,6 +634,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		IQueryable<TaskSubmission> query = _db.TaskSubmissions.AsNoTracking()
 			.Where(s => accessibleTaskIds.Contains(s.TaskId))
+			.Where(s => _db.Tasks.AsNoTracking().Any(t => t.Id == s.TaskId && t.VerificationType != TaskVerificationType.Auto))
 			.Include(s => s.PhotoImages);
 
 		if(userId.HasValue)
@@ -689,8 +697,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				.FirstOrDefaultAsync(x => x.Id == submissionId && x.UserId == actorUserId, cancellationToken);
 
 			return ownSubmission is null
-				? TaskOperationResult<TaskSubmissionModel>.Fail(TaskOperationError.SubmissionNotFound)
-				: TaskOperationResult<TaskSubmissionModel>.Success(ToSubmissionModel(ownSubmission));
+			   ? TaskOperationResult<TaskSubmissionModel>.Fail(TaskOperationError.SubmissionNotFound)
+			   : await MapToSubmissionModelOrAutoNotSupportedAsync(ownSubmission, cancellationToken);
 		}
 
 		var submission = await _db.TaskSubmissions.AsNoTracking()
@@ -704,7 +712,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(submission.UserId == actorUserId)
 		{
-			return TaskOperationResult<TaskSubmissionModel>.Success(ToSubmissionModel(submission));
+			return await MapToSubmissionModelOrAutoNotSupportedAsync(submission, cancellationToken);
 		}
 
 		var accessError = await EnsureAdminTaskAccessAsync(actorUserId, submission.TaskId, cancellationToken);
@@ -713,7 +721,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult<TaskSubmissionModel>.Fail(accessError);
 		}
 
-		return TaskOperationResult<TaskSubmissionModel>.Success(ToSubmissionModel(submission));
+		return await MapToSubmissionModelOrAutoNotSupportedAsync(submission, cancellationToken);
 	}
 
 	private static IQueryable<TaskSubmission> ApplyDecisionStatusFilter(IQueryable<TaskSubmission> query, string decisionStatus)
@@ -751,13 +759,22 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(task.AuthorUserId == actorUserId)
 		{
-			return TaskOperationError.None;
+			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+				? TaskOperationError.TaskAutoVerificationNotSupported
+				: TaskOperationError.None;
 		}
 
 		var isTrustedAdmin = await _db.TaskTrustedAdmins.AsNoTracking()
 			.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
 
-		return isTrustedAdmin ? TaskOperationError.None : TaskOperationError.Forbidden;
+		if(!isTrustedAdmin)
+		{
+			return TaskOperationError.Forbidden;
+		}
+
+		return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+			? TaskOperationError.TaskAutoVerificationNotSupported
+			: TaskOperationError.None;
 	}
 
 	private async Task<TaskOperationError> EnsureCreatorOrTrustedAccessAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
@@ -776,12 +793,22 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(task.AuthorUserId == actorUserId)
 		{
-			return TaskOperationError.None;
+			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+				? TaskOperationError.TaskAutoVerificationNotSupported
+				: TaskOperationError.None;
 		}
 
 		var isTrustedAdmin = actor.IsAdmin && await _db.TaskTrustedAdmins.AsNoTracking()
 			.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
-		return isTrustedAdmin ? TaskOperationError.None : TaskOperationError.Forbidden;
+
+		if(!isTrustedAdmin)
+		{
+			return TaskOperationError.Forbidden;
+		}
+
+		return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+			? TaskOperationError.TaskAutoVerificationNotSupported
+			: TaskOperationError.None;
 	}
 
 	private static TaskSubmissionModel ToSubmissionModel(TaskSubmission s)
@@ -800,5 +827,25 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			s.DecidedAt,
 			photoIds,
 			s.ProofText);
+	}
+
+	private async Task<TaskOperationResult<TaskSubmissionModel>> MapToSubmissionModelOrAutoNotSupportedAsync(TaskSubmission submission, CancellationToken cancellationToken)
+	{
+		var verificationType = await _db.Tasks.AsNoTracking()
+			.Where(t => t.Id == submission.TaskId)
+			.Select(t => t.VerificationType)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if(verificationType is null)
+		{
+			return TaskOperationResult<TaskSubmissionModel>.Fail(TaskOperationError.SubmissionNotFound);
+		}
+
+		if(string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			return TaskOperationResult<TaskSubmissionModel>.Fail(TaskOperationError.TaskAutoVerificationNotSupported);
+		}
+
+		return TaskOperationResult<TaskSubmissionModel>.Success(ToSubmissionModel(submission));
 	}
 }

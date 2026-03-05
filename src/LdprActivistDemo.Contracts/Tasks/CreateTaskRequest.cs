@@ -14,4 +14,6 @@ public sealed record CreateTaskRequest(
 	[Range(1, int.MaxValue)] int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid>? TrustedAdminIds,
-	string VerificationType = TaskVerificationType.Manual);
+	string VerificationType = TaskVerificationType.Manual,
+	string ReuseType = TaskReuseType.Disposable,
+	string? AutoVerificationActionType = null);

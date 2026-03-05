@@ -14,4 +14,6 @@ public sealed record UpdateTaskRequest(
 	[Range(1, int.MaxValue)] int RegionId,
 	int? CityId,
 	IReadOnlyList<Guid>? TrustedAdminIds,
-	string? VerificationType = null);
+	string? VerificationType = null,
+	string? ReuseType = null,
+	string? AutoVerificationActionType = null);

@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260305200306_AddTaskReuseTypeAndAllowMultipleSubmissions")]
+    partial class AddTaskReuseTypeAndAllowMultipleSubmissions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -93,9 +96,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<Guid>("AuthorUserId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AutoVerificationActionType")
-                        .HasColumnType("text");
-
                     b.Property<int?>("CityId")
                         .HasColumnType("integer");
 
@@ -157,8 +157,6 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.ToTable("tasks", null, t =>
                         {
-                            t.HasCheckConstraint("ck_tasks_auto_verification_action_type_allowed", "(\"VerificationType\" = 'manual' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = 'auto' AND \"AutoVerificationActionType\" IN ('invite_friend'))");
-
                             t.HasCheckConstraint("ck_tasks_reuse_type_allowed", "\"ReuseType\" IN ('disposable','reusable')");
 
                             t.HasCheckConstraint("ck_tasks_reward_non_negative", "\"RewardPoints\" >= 0");
