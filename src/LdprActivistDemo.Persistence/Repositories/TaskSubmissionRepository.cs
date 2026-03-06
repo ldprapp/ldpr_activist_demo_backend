@@ -15,35 +15,30 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 {
 	private readonly AppDbContext _db;
 	private readonly IUserRepository _users;
-	private readonly IPasswordHasher _passwordHasher;
 	private readonly ILogger<TaskSubmissionRepository> _logger;
 
-	public TaskSubmissionRepository(AppDbContext db, IUserRepository users, IPasswordHasher passwordHasher, ILogger<TaskSubmissionRepository> logger)
+	public TaskSubmissionRepository(AppDbContext db, IUserRepository users, ILogger<TaskSubmissionRepository> logger)
 	{
 		_db = db;
 		_users = users;
-		_passwordHasher = passwordHasher;
 		_logger = logger;
 	}
 
-	public async Task<TaskOperationResult> ValidateActorAsync(
-		Guid actorUserId,
-		string actorUserPassword,
-		CancellationToken cancellationToken)
-	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		return ok
-			? TaskOperationResult.Success()
-			: TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
-	}
-
-	public async Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	public async Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, Guid userId, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
 			_logger.LogWarning("SubmitTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskSubmitOperationResult.Fail(TaskOperationError.InvalidCredentials);
+		}
+
+		var user = actorUserId == userId
+			? actor
+			: await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+		if(user is null)
+		{
+			return TaskSubmitOperationResult.Fail(TaskOperationError.UserNotFound);
 		}
 
 		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
@@ -60,8 +55,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskClosed);
 		}
 
-		var geoOk = task.RegionId == actor.RegionId
-			&& (task.CityId is null || actor.CityId == task.CityId.Value);
+		var geoOk = task.RegionId == user.RegionId
+			&& (task.CityId is null || user.CityId == task.CityId.Value);
 		if(!geoOk)
 		{
 			_logger.LogWarning("SubmitTask rejected: task is not accessible by geo. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
@@ -87,7 +82,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			var existing = await _db.TaskSubmissions
 				.AsNoTracking()
-				.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == actorUserId, cancellationToken);
+				.FirstOrDefaultAsync(x => x.TaskId == taskId && x.UserId == userId, cancellationToken);
 
 			if(existing is not null)
 			{
@@ -101,7 +96,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		{
 			Id = Guid.NewGuid(),
 			TaskId = taskId,
-			UserId = actorUserId,
+			UserId = userId,
 			SubmittedAt = model.SubmittedAt,
 			DecisionStatus = TaskSubmissionDecisionStatus.InProgress,
 			ProofText = null,
@@ -113,14 +108,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskSubmitOperationResult.Created();
 	}
 
-	public async Task<TaskOperationResult> SubmitForReviewAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> SubmitForReviewAsync(Guid actorUserId, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!ok)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
-		}
-
 		var submission = await _db.TaskSubmissions
 			.Include(x => x.PhotoImages)
 			.FirstOrDefaultAsync(x => x.Id == submissionId && x.UserId == actorUserId, cancellationToken);
@@ -201,16 +190,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	public async Task<TaskOperationResult> DeleteSubmissionAsync(
 		Guid actorUserId,
-		string actorUserPassword,
 		Guid taskId,
 		CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!ok)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
-		}
-
 		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
 		if(task is null)
 		{
@@ -248,14 +230,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!ok)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
-		}
-
 		var existing = await _db.TaskSubmissions
 			.FirstOrDefaultAsync(x => x.Id == submissionId && x.UserId == actorUserId, cancellationToken);
 		if(existing is null)
@@ -362,9 +338,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, taskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
 		{
 			_logger.LogWarning("GetSubmittedUsers rejected: access denied. ActorUserId={ActorUserId}, TaskId={TaskId}, Error={Error}.",
@@ -399,9 +375,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetApprovedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetApprovedUsersAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, taskId, cancellationToken);
 
 		if(accessError != TaskOperationError.None)
 		{
@@ -437,19 +413,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
 	}
 
-	public async Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, string actorUserPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, Guid taskId, Guid userId, CancellationToken cancellationToken)
 	{
-		if(actorUserId == userId)
+		if(actorUserId != userId)
 		{
-			var selfOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-			if(!selfOk)
-			{
-				return TaskOperationResult<SubmissionUserViewModel>.Fail(TaskOperationError.InvalidCredentials);
-			}
-		}
-		else
-		{
-			var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+			var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, taskId, cancellationToken);
 			if(accessError != TaskOperationError.None)
 			{
 				return TaskOperationResult<SubmissionUserViewModel>.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
@@ -490,7 +458,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			ToSubmissionModel(submission)));
 	}
 
-	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, Guid submissionId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
 	{
 		var submission = await _db.TaskSubmissions
 			.FirstOrDefaultAsync(x => x.Id == submissionId, cancellationToken);
@@ -499,7 +467,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
 
-		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, submission.TaskId, cancellationToken);
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, submission.TaskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
 		{
 			return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
@@ -563,7 +531,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> RejectAsync(Guid actorUserId, Guid submissionId, DateTimeOffset decidedAt, CancellationToken cancellationToken)
 	{
 		var submission = await _db.TaskSubmissions
 			.FirstOrDefaultAsync(x => x.Id == submissionId, cancellationToken);
@@ -572,7 +540,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 		}
 
-		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, actorUserPassword, submission.TaskId, cancellationToken);
+		var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, submission.TaskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
 		{
 			return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
@@ -615,14 +583,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetAdminFeedAsync(
 		Guid actorUserId,
-		string actorUserPassword,
 		Guid? taskId,
 		Guid? userId,
 		string? decisionStatus,
 		CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
 			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.InvalidCredentials);
 		}
@@ -675,12 +642,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetUserFeedAsync(
 		Guid actorUserId,
-		string actorUserPassword,
 		string? decisionStatus,
 		CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!ok)
+		var actorExists = await _db.Users.AsNoTracking()
+			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
+		if(!actorExists)
 		{
 			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.InvalidCredentials);
 		}
@@ -701,12 +668,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	public async Task<TaskOperationResult<TaskSubmissionModel>> GetByIdAsync(
 		Guid actorUserId,
-		string actorUserPassword,
 		Guid submissionId,
 		CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
 			return TaskOperationResult<TaskSubmissionModel>.Fail(TaskOperationError.InvalidCredentials);
 		}
@@ -798,10 +764,10 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			: TaskOperationError.None;
 	}
 
-	private async Task<TaskOperationError> EnsureCreatorOrTrustedAccessAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	private async Task<TaskOperationError> EnsureCreatorOrTrustedAccessAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
 			return TaskOperationError.InvalidCredentials;
 		}

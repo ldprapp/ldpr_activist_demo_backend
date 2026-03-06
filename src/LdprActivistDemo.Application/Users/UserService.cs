@@ -73,13 +73,13 @@ public sealed class UserService : IUserService
 	public Task<UserPublicModel?> GetByIdAsync(Guid userId, CancellationToken cancellationToken) =>
 		_users.GetPublicByIdAsync(userId, cancellationToken);
 
-	public Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken) =>
-		_users.ChangePasswordAsync(userId, oldPassword, newPassword, cancellationToken);
+	public Task<bool> ChangePasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken) =>
+		_users.SetPasswordAsync(userId, newPassword, cancellationToken);
 
-	public Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken) =>
-		_users.UpdateAsync(model, actorPassword, cancellationToken);
+	public Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken) =>
+		_users.UpdateAsync(model, cancellationToken);
 
-	public async Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, string otpCode, CancellationToken cancellationToken)
+	public async Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, string otpCode, CancellationToken cancellationToken)
 	{
 		var otpOk = await _otp.VerifyAsync(newPhoneNumber, otpCode, cancellationToken);
 		if(!otpOk)
@@ -89,7 +89,6 @@ public sealed class UserService : IUserService
 
 		var changed = await _users.ChangePhoneAsync(
 			userId,
-			password,
 			newPhoneNumber,
 			cancellationToken);
 

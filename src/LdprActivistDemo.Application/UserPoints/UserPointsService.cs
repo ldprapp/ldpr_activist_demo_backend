@@ -7,11 +7,13 @@ public sealed class UserPointsService : IUserPointsService
 {
 	private readonly IUserRepository _users;
 	private readonly IUserPointsTransactionRepository _transactions;
+	private readonly IActorAccessService _actorAccess;
 
-	public UserPointsService(IUserRepository users, IUserPointsTransactionRepository transactions)
+	public UserPointsService(IUserRepository users, IUserPointsTransactionRepository transactions, IActorAccessService actorAccess)
 	{
 		_users = users ?? throw new ArgumentNullException(nameof(users));
 		_transactions = transactions ?? throw new ArgumentNullException(nameof(transactions));
+		_actorAccess = actorAccess ?? throw new ArgumentNullException(nameof(actorAccess));
 	}
 
 	public async Task<UserPointsResult<int>> GetBalanceAsync(
@@ -27,16 +29,16 @@ public sealed class UserPointsService : IUserPointsService
 			return UserPointsResult<int>.Fail(UserPointsError.ValidationFailed);
 		}
 
-		var passwordOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!passwordOk)
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!actorAuth.IsSuccess)
 		{
 			return UserPointsResult<int>.Fail(UserPointsError.InvalidCredentials);
 		}
 
+		var actor = actorAuth.Actor!;
 		if(actorUserId != userId)
 		{
-			var isAdmin = await _users.IsAdminAsync(actorUserId, cancellationToken);
-			if(!isAdmin)
+			if(!actor.IsAdmin)
 			{
 				return UserPointsResult<int>.Fail(UserPointsError.Forbidden);
 			}
@@ -61,16 +63,16 @@ public sealed class UserPointsService : IUserPointsService
 			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.ValidationFailed);
 		}
 
-		var passwordOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!passwordOk)
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!actorAuth.IsSuccess)
 		{
 			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.InvalidCredentials);
 		}
 
+		var actor = actorAuth.Actor!;
 		if(actorUserId != userId)
 		{
-			var isAdmin = await _users.IsAdminAsync(actorUserId, cancellationToken);
-			if(!isAdmin)
+			if(!actor.IsAdmin)
 			{
 				return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.Forbidden);
 			}
@@ -101,14 +103,14 @@ public sealed class UserPointsService : IUserPointsService
 			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
 		}
 
-		var passwordOk = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!passwordOk)
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!actorAuth.IsSuccess)
 		{
 			return UserPointsResult<Guid>.Fail(UserPointsError.InvalidCredentials);
 		}
 
-		var isAdmin = await _users.IsAdminAsync(actorUserId, cancellationToken);
-		if(!isAdmin)
+		var actor = actorAuth.Actor!;
+		if(!actor.IsAdmin)
 		{
 			return UserPointsResult<Guid>.Fail(UserPointsError.Forbidden);
 		}

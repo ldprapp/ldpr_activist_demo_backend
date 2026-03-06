@@ -1,4 +1,5 @@
 ﻿using LdprActivistDemo.Application.Tasks.Models;
+using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
 
 namespace LdprActivistDemo.Application.Tasks;
@@ -7,33 +8,70 @@ public sealed class TaskService : ITaskService
 {
 	private readonly ITaskRepository _tasks;
 	private readonly ITaskSubmissionRepository _submissions;
+	private readonly IActorAccessService _actorAccess;
 
-	public TaskService(ITaskRepository tasks, ITaskSubmissionRepository submissions)
+	public TaskService(ITaskRepository tasks, ITaskSubmissionRepository submissions, IActorAccessService actorAccess)
 	{
 		_tasks = tasks;
 		_submissions = submissions;
+		_actorAccess = actorAccess;
 	}
 
-	public Task<TaskOperationResult> ValidateActorAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
-		=> _submissions.ValidateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+	public async Task<TaskOperationResult> ValidateActorAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? TaskOperationResult.Success()
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
-		=> _tasks.CreateAsync(actorUserId, actorUserPassword, model, cancellationToken);
+	public async Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.CreateAsync(actorUserId, model, cancellationToken)
+			: TaskOperationResult<Guid>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> UpdateAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskUpdateModel model, CancellationToken cancellationToken)
-		=> _tasks.UpdateAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
+	public async Task<TaskOperationResult> UpdateAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskUpdateModel model, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.UpdateAsync(actorUserId, taskId, model, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.DeleteAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.DeleteAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.OpenAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.OpenAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.CloseAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.CloseAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _tasks.GetAdminAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.GetAdminAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult<TaskModel>.Fail(authError.Value);
+	}
 
 	public Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken)
 		=> _tasks.GetPublicAsync(taskId, cancellationToken);
@@ -53,45 +91,138 @@ public sealed class TaskService : ITaskService
 	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetAvailableForUserAsync(Guid userId, CancellationToken cancellationToken)
 		=> _tasks.GetAvailableForUserAsync(userId, cancellationToken);
 
-	public Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
-		=> _submissions.SubmitAsync(actorUserId, actorUserPassword, taskId, model, cancellationToken);
+	public async Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid userId, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	{
+		if(userId == Guid.Empty || actorUserId != userId)
+		{
+			return TaskSubmitOperationResult.Fail(TaskOperationError.ValidationFailed);
+		}
 
-	public Task<TaskOperationResult> SubmitForReviewAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
-		=> _submissions.SubmitForReviewAsync(actorUserId, actorUserPassword, submissionId, model, cancellationToken);
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.SubmitAsync(actorUserId, userId, taskId, model, cancellationToken)
+			: TaskSubmitOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
-		=> _submissions.UpdateSubmissionAsync(actorUserId, actorUserPassword, submissionId, model, cancellationToken);
+	public async Task<TaskOperationResult> SubmitForReviewAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.SubmitForReviewAsync(actorUserId, submissionId, model, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> DeleteSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _submissions.DeleteSubmissionAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult> UpdateSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.UpdateSubmissionAsync(actorUserId, submissionId, model, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _submissions.GetSubmittedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult> DeleteSubmissionAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.DeleteSubmissionAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetApprovedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-		=> _submissions.GetApprovedUsersAsync(actorUserId, actorUserPassword, taskId, cancellationToken);
+	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetSubmittedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetSubmittedUsersAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
-		=> _submissions.GetSubmittedUserAsync(actorUserId, actorPassword, taskId, userId, cancellationToken);
+	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetApprovedUsersAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetApprovedUsersAsync(actorUserId, taskId, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid submissionId, CancellationToken cancellationToken)
-		=> _submissions.ApproveAsync(actorUserId, actorPassword, submissionId, DateTimeOffset.UtcNow, cancellationToken);
+	public async Task<TaskOperationResult<SubmissionUserViewModel>> GetSubmittedUserAsync(Guid actorUserId, string actorPassword, Guid taskId, Guid userId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetSubmittedUserAsync(actorUserId, taskId, userId, cancellationToken)
+			: TaskOperationResult<SubmissionUserViewModel>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorPassword, Guid submissionId, CancellationToken cancellationToken)
-		=> _submissions.RejectAsync(actorUserId, actorPassword, submissionId, DateTimeOffset.UtcNow, cancellationToken);
+	public async Task<TaskOperationResult> ApproveAsync(Guid actorUserId, string actorPassword, Guid submissionId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorPassword, cancellationToken);
+		return authError is null
+			? await _submissions.ApproveAsync(actorUserId, submissionId, DateTimeOffset.UtcNow, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
-		=> _tasks.GetByUserSubmittedAsync(actorUserId, actorUserPassword, cancellationToken);
+	public async Task<TaskOperationResult> RejectAsync(Guid actorUserId, string actorPassword, Guid submissionId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorPassword, cancellationToken);
+		return authError is null
+			? await _submissions.RejectAsync(actorUserId, submissionId, DateTimeOffset.UtcNow, cancellationToken)
+			: TaskOperationResult.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserApprovedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
-		=> _tasks.GetByUserApprovedAsync(actorUserId, actorUserPassword, cancellationToken);
+	public async Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.GetByUserSubmittedAsync(actorUserId, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<TaskModel>>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionAdminFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid? userId, string? decisionStatus, CancellationToken cancellationToken)
-		=> _submissions.GetAdminFeedAsync(actorUserId, actorUserPassword, taskId, userId, decisionStatus, cancellationToken);
+	public async Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserApprovedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _tasks.GetByUserApprovedAsync(actorUserId, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<TaskModel>>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(Guid actorUserId, string actorUserPassword, string? decisionStatus, CancellationToken cancellationToken)
-		=> _submissions.GetUserFeedAsync(actorUserId, actorUserPassword, decisionStatus, cancellationToken);
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionAdminFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid? userId, string? decisionStatus, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetAdminFeedAsync(actorUserId, taskId, userId, decisionStatus, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
+	}
 
-	public Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken)
-		=> _submissions.GetByIdAsync(actorUserId, actorUserPassword, submissionId, cancellationToken);
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(Guid actorUserId, string actorUserPassword, string? decisionStatus, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetUserFeedAsync(actorUserId, decisionStatus, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
+	}
+
+	public async Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken)
+	{
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetByIdAsync(actorUserId, submissionId, cancellationToken)
+			: TaskOperationResult<TaskSubmissionModel>.Fail(authError.Value);
+	}
+
+	private async Task<TaskOperationError?> TryAuthenticateActorAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var auth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(auth.IsSuccess)
+		{
+			return null;
+		}
+
+		return auth.Error switch
+		{
+			ActorAuthenticationError.ValidationFailed => TaskOperationError.ValidationFailed,
+			_ => TaskOperationError.InvalidCredentials,
+		};
+	}
 }

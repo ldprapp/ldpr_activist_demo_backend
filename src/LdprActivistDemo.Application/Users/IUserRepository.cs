@@ -22,9 +22,9 @@ public interface IUserRepository
 	Task<bool> ValidatePasswordAsync(Guid userId, string password, CancellationToken cancellationToken);
 
 	Task<bool> SetPhoneConfirmedAsync(string phoneNumber, bool isConfirmed, CancellationToken cancellationToken);
-	Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken);
-	Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken);
-	Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken);
+	Task<bool> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken);
+	Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken);
+	Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, CancellationToken cancellationToken);
 
 	Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken);

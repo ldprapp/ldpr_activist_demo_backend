@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
 
 		services.AddScoped<IPasswordResetService, PasswordResetService>();
 
+		services.AddScoped<IActorAccessService, ActorAccessService>();
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<LdprActivistDemo.Application.UserPoints.IUserPointsService, LdprActivistDemo.Application.UserPoints.UserPointsService>();

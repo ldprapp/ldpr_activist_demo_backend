@@ -189,15 +189,10 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken)
+	public async Task<bool> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		if(u is null)
-		{
-			return false;
-		}
-
-		if(!_passwordHasher.Verify(u.PasswordHash, oldPassword))
 		{
 			return false;
 		}
@@ -207,7 +202,7 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken)
+	public async Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == model.UserId, cancellationToken);
 		if(u is null)
@@ -218,11 +213,6 @@ public sealed class UserRepository : IUserRepository
 		var hadAvatar = ImageGcHelpers.TryExtractImageId(u.AvatarImageUrl, out var previousAvatarId);
 		Guid? newAvatarId = hadAvatar ? previousAvatarId : (Guid?)null;
 		var avatarChanged = false;
-
-		if(!_passwordHasher.Verify(u.PasswordHash, actorPassword))
-		{
-			return false;
-		}
 
 		var geo = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
 		if(!geo.IsSuccess)
@@ -263,15 +253,10 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, CancellationToken cancellationToken)
+	public async Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, CancellationToken cancellationToken)
 	{
 		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		if(u is null)
-		{
-			return false;
-		}
-
-		if(!_passwordHasher.Verify(u.PasswordHash, password))
 		{
 			return false;
 		}

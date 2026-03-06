@@ -22,13 +22,15 @@ public sealed class UsersController : ControllerBase
 	private readonly IOtpService _otp;
 	private readonly IPasswordResetService _passwordReset;
 	private readonly IImageService _images;
+	private readonly IActorAccessService _actorAccess;
 
-	public UsersController(IUserService users, IOtpService otp, IPasswordResetService passwordReset, IImageService images)
+	public UsersController(IUserService users, IOtpService otp, IPasswordResetService passwordReset, IImageService images, IActorAccessService actorAccess)
 	{
 		_users = users ?? throw new ArgumentNullException(nameof(users));
 		_otp = otp ?? throw new ArgumentNullException(nameof(otp));
 		_passwordReset = passwordReset ?? throw new ArgumentNullException(nameof(passwordReset));
 		_images = images ?? throw new ArgumentNullException(nameof(images));
+		_actorAccess = actorAccess ?? throw new ArgumentNullException(nameof(actorAccess));
 	}
 
 	[HttpPost("register")]
@@ -454,8 +456,25 @@ public sealed class UsersController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> ChangePassword(Guid id, [FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
+	public async Task<IActionResult> ChangePassword(
+		Guid id,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromBody] ChangePasswordRequest request,
+		CancellationToken cancellationToken)
 	{
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var invalidActorTarget = this.TryBuildActorUserMatchValidationProblem(actorUserId, id, nameof(id));
+		if(invalidActorTarget is not null)
+		{
+			return invalidActorTarget;
+		}
+
 		if(string.IsNullOrWhiteSpace(request.OldPassword) || string.IsNullOrWhiteSpace(request.NewPassword))
 		{
 			return this.ValidationProblemWithCode(
@@ -467,16 +486,26 @@ public sealed class UsersController : ControllerBase
 				});
 		}
 
-		var existing = await _users.GetByIdAsync(id, cancellationToken);
-		if(existing is null)
+		var invalidPasswordMatch = this.TryBuildActorPasswordMatchValidationProblem(
+			actorUserPassword,
+			request.OldPassword,
+			nameof(request.OldPassword),
+			ActorPasswordHeader);
+		if(invalidPasswordMatch is not null)
 		{
-			return this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.");
+			return invalidPasswordMatch;
 		}
 
-		var ok = await _users.ChangePasswordAsync(id, request.OldPassword, request.NewPassword, cancellationToken);
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!actorAuth.IsSuccess)
+		{
+			return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", $"Проверьте actorUserId и заголовок {ActorPasswordHeader}.");
+		}
+
+		var ok = await _users.ChangePasswordAsync(id, request.NewPassword, cancellationToken);
 		if(!ok)
 		{
-			return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверный пароль.", "OldPassword не совпадает.");
+			return this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.");
 		}
 
 		return NoContent();
@@ -490,19 +519,22 @@ public sealed class UsersController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> Update(
-		Guid id,
+ 		Guid id,
+		[FromQuery] Guid actorUserId,
 		[FromForm] UpdateUserFormRequest request,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorPassword,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
-		if(string.IsNullOrWhiteSpace(actorPassword))
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
 		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["ActorPassword"] = new[] { "ActorPassword is required (use X-Actor-Password header)." },
-				});
+			return invalidActor;
+		}
+
+		var invalidActorTarget = this.TryBuildActorUserMatchValidationProblem(actorUserId, id, nameof(id));
+		if(invalidActorTarget is not null)
+		{
+			return invalidActorTarget;
 		}
 
 		var errors = ValidateUpdate(request);
@@ -511,10 +543,10 @@ public sealed class UsersController : ControllerBase
 			return this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors);
 		}
 
-		var existing = await _users.GetByIdAsync(id, cancellationToken);
-		if(existing is null)
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!actorAuth.IsSuccess)
 		{
-			return this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.");
+			return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", $"Проверьте actorUserId и заголовок {ActorPasswordHeader}.");
 		}
 
 		try
@@ -548,12 +580,11 @@ public sealed class UsersController : ControllerBase
 					RegionName: request.RegionName,
 					CityName: request.CityName,
 					AvatarImageId: avatarImageId),
-				actorPassword,
 				cancellationToken);
 
 			if(!ok)
 			{
-				return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверный пароль.", "ActorPassword не совпадает.");
+				return this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.");
 			}
 
 			return NoContent();
@@ -575,17 +606,25 @@ public sealed class UsersController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> ChangePhone(
-		Guid id,
+ 		Guid id,
+		[FromQuery] Guid actorUserId,
 		[FromBody] ChangePhoneRequest request,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorPassword,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
-		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-		if(string.IsNullOrWhiteSpace(actorPassword))
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
 		{
-			errors["ActorPassword"] = new[] { "ActorPassword is required (use X-Actor-Password header)." };
+			return invalidActor;
 		}
+
+		var invalidActorTarget = this.TryBuildActorUserMatchValidationProblem(actorUserId, id, nameof(id));
+		if(invalidActorTarget is not null)
+		{
+			return invalidActorTarget;
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
 		if(string.IsNullOrWhiteSpace(request.NewPhoneNumber))
 		{
@@ -608,17 +647,16 @@ public sealed class UsersController : ControllerBase
 				errors);
 		}
 
-		var existing = await _users.GetByIdAsync(id, cancellationToken);
-		if(existing is null)
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!actorAuth.IsSuccess)
 		{
-			return this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.");
+			return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", $"Проверьте actorUserId и заголовок {ActorPasswordHeader}.");
 		}
 
 		try
 		{
 			var ok = await _users.ChangePhoneAsync(
 				id,
-				actorPassword!,
 				request.NewPhoneNumber,
 				request.OtpCode,
 				cancellationToken);

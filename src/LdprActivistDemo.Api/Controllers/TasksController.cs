@@ -637,17 +637,24 @@ public sealed class TasksController : ControllerBase
 		[FromRoute] Guid taskId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromQuery] Guid userId,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
 		if(invalidActor is not null) return invalidActor;
+
+		var invalidTargetUser = this.TryBuildActorUserMatchValidationProblem(
+			actorUserId,
+			userId,
+			nameof(userId));
+		if(invalidTargetUser is not null) return invalidTargetUser;
 
 		var model = new TaskSubmissionCreateModel(
 			PhotoImageIds: null,
 			ProofText: null,
 			SubmittedAt: DateTimeOffset.UtcNow);
 
-		var result = await _tasks.SubmitAsync(actorUserId, actorUserPassword!, taskId, model, cancellationToken);
+		var result = await _tasks.SubmitAsync(actorUserId, actorUserPassword!, userId, taskId, model, cancellationToken);
 		if(!result.IsSuccess)
 		{
 			return MapTaskError(result.Error);
@@ -1051,27 +1058,7 @@ public sealed class TasksController : ControllerBase
 	}
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
-	{
-		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-		if(actorUserId == Guid.Empty)
-		{
-			errors["actorUserId"] = new[] { "ActorUserId is required." };
-		}
-
-		if(string.IsNullOrWhiteSpace(actorUserPassword))
-		{
-			errors["actorUserPassword"] = new[] { $"ActorUserPassword is required (use {ActorPasswordHeader} header)." };
-		}
-
-		return errors.Count == 0
-			? null
-			: this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				errors,
-				title: "Некорректный запрос.",
-				detail: $"Передайте actorUserId и заголовок {ActorPasswordHeader}.");
-	}
+		=> this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
 
 	private IActionResult? TryBuildFeedFilterValidationProblem(string? regionName, string? cityName)
 	{

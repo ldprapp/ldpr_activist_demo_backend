@@ -1,6 +1,5 @@
 ﻿using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
-using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Contracts.Tasks;
 using LdprActivistDemo.Persistence.Repositories;
 
@@ -14,21 +13,19 @@ namespace LdprActivistDemo.Persistence;
 public sealed class TaskRepository : ITaskRepository
 {
 	private readonly AppDbContext _db;
-	private readonly IPasswordHasher _passwordHasher;
 	private readonly ILogger<TaskRepository> _logger;
 
-	public TaskRepository(AppDbContext db, IPasswordHasher passwordHasher, ILogger<TaskRepository> logger)
+	public TaskRepository(AppDbContext db, ILogger<TaskRepository> logger)
 	{
 		_db = db;
-		_passwordHasher = passwordHasher;
 		_logger = logger;
 	}
 
-	public async Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, string actorUserPassword, TaskCreateModel model, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, TaskCreateModel model, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
 
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
 			_logger.LogWarning("CreateTask rejected: invalid credentials. ActorUserId={ActorUserId}.", actorUserId);
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.InvalidCredentials);
@@ -148,13 +145,13 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult<Guid>.Success(entity.Id);
 	}
 
-	public async Task<TaskOperationResult> UpdateAsync(Guid actorUserId, string actorUserPassword, Guid taskId, TaskUpdateModel model, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> UpdateAsync(Guid actorUserId, Guid taskId, TaskUpdateModel model, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
 
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
-			_logger.LogWarning("UpdateTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("UpdateTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
 		}
 
@@ -328,13 +325,13 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> DeleteAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		var actorExists = await _db.Users.AsNoTracking()
+			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
+		if(!actorExists)
 		{
-			_logger.LogWarning("DeleteTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("DeleteTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
 		}
 
@@ -355,13 +352,13 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		var actorExists = await _db.Users.AsNoTracking()
+			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
+		if(!actorExists)
 		{
-			_logger.LogWarning("OpenTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("OpenTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
 		}
 
@@ -387,13 +384,13 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult> CloseAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		var actorExists = await _db.Users.AsNoTracking()
+			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
+		if(!actorExists)
 		{
-			_logger.LogWarning("CloseTask rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("CloseTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
 		}
 
@@ -414,12 +411,12 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
+		if(actor is null)
 		{
-			_logger.LogWarning("GetTaskAdmin rejected: invalid credentials. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("GetTaskAdmin rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.InvalidCredentials);
 		}
 
@@ -535,14 +532,8 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult<IReadOnlyList<TaskModel>>.Success(mapped);
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserSubmittedAsync(Guid actorUserId, CancellationToken cancellationToken)
 	{
-		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
-		{
-			return TaskOperationResult<IReadOnlyList<TaskModel>>.Fail(TaskOperationError.InvalidCredentials);
-		}
-
 		var tasks = await _db.TaskSubmissions.AsNoTracking()
 			.Where(s => s.UserId == actorUserId
 				&& (s.DecisionStatus == null
@@ -558,14 +549,8 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult<IReadOnlyList<TaskModel>>.Success(mapped);
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserApprovedAsync(Guid actorUserId, string actorUserPassword, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetByUserApprovedAsync(Guid actorUserId, CancellationToken cancellationToken)
 	{
-		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
-		if(actor is null || !_passwordHasher.Verify(actor.PasswordHash, actorUserPassword))
-		{
-			return TaskOperationResult<IReadOnlyList<TaskModel>>.Fail(TaskOperationError.InvalidCredentials);
-		}
-
 		var tasks = await _db.TaskSubmissions.AsNoTracking()
 			.Where(s => s.UserId == actorUserId
 				&& s.DecisionStatus == LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve)

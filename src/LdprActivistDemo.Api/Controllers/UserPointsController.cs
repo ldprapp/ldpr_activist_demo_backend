@@ -187,27 +187,7 @@ public sealed class UserPointsController : ControllerBase
 		=> new(t.Id, t.Amount, t.TransactionAt, t.Comment);
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
-	{
-		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-		if(actorUserId == Guid.Empty)
-		{
-			errors["actorUserId"] = new[] { "ActorUserId is required." };
-		}
-
-		if(string.IsNullOrWhiteSpace(actorUserPassword))
-		{
-			errors["actorUserPassword"] = new[] { $"ActorUserPassword is required (use {ActorPasswordHeader} header)." };
-		}
-
-		return errors.Count == 0
-			? null
-			: this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				errors,
-				title: "Некорректный запрос.",
-				detail: $"Передайте actorUserId и заголовок {ActorPasswordHeader}.");
-	}
+		=> this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
 
 	private IActionResult MapPointsError(UserPointsError error)
 		=> error switch
