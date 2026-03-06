@@ -9,8 +9,8 @@ public sealed record UserInternalModel(
 	string PhoneNumber,
 	string PasswordHash,
 	DateOnly BirthDate,
-	int RegionId,
-	int CityId,
+	string RegionName,
+	string CityName,
 	bool IsAdmin,
 	bool IsPhoneConfirmed,
 	string? AvatarImageUrl);

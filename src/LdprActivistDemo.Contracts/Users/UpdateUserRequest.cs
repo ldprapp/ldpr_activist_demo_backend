@@ -6,6 +6,6 @@ public sealed record UpdateUserRequest(
 	string? MiddleName,
 	string? Gender,
 	DateOnly BirthDate,
-	int RegionId,
-	int CityId,
+	string RegionName,
+	string CityName,
 	Guid? AvatarImageId = null);

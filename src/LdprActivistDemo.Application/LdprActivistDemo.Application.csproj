@@ -16,4 +16,8 @@
     <ProjectReference Include="..\LdprActivistDemo.Contracts\LdprActivistDemo.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Geo\Seeding\" />
+  </ItemGroup>
+
 </Project>

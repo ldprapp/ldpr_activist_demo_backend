@@ -53,7 +53,7 @@ public sealed class AppDbContext : DbContext
 			b.HasOne(x => x.Region)
 				.WithMany(r => r.Cities)
 				.HasForeignKey(x => x.RegionId)
-				.OnDelete(DeleteBehavior.Restrict);
+				.OnDelete(DeleteBehavior.Cascade);
 
 			b.HasIndex(x => new { x.RegionId, x.Name }).IsUnique();
 		});

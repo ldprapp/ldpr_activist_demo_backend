@@ -1,3 +1,3 @@
 ﻿namespace LdprActivistDemo.Contracts.Geo;
 
-public sealed record RegionDto(int Id, string Name);
+public sealed record RegionDto(string Name);

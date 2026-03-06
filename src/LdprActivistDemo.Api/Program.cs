@@ -43,9 +43,6 @@ await using(var scope = app.Services.CreateAsyncScope())
 		await db.Database.MigrateAsync(app.Lifetime.ApplicationStopping);
 	}
 
-	var geoSeeder = scope.ServiceProvider.GetRequiredService<GeoDbSeeder>();
-	await geoSeeder.SeedAsync(app.Lifetime.ApplicationStopping);
-
 	var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
 	await userRepository.DeleteAllUnconfirmedAsync(app.Lifetime.ApplicationStopping);
 }

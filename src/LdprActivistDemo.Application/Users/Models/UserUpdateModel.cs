@@ -7,6 +7,6 @@ public sealed record UserUpdateModel(
 	string? MiddleName,
 	string? Gender,
 	DateOnly BirthDate,
-	int RegionId,
-	int CityId,
+	string RegionName,
+	string CityName,
 	Guid? AvatarImageId = null);

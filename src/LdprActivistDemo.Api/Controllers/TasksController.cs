@@ -240,8 +240,8 @@ public sealed class TasksController : ControllerBase
 			request.ExecutionLocation,
 			publishedAt,
 			request.DeadlineAt,
-			request.RegionId,
-			request.CityId,
+			request.RegionName,
+			request.CityName,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
 			verificationType,
 			reuseType,
@@ -363,8 +363,8 @@ public sealed class TasksController : ControllerBase
 			request.ExecutionLocation,
 			publishedAt,
 			request.DeadlineAt,
-			request.RegionId,
-			request.CityId,
+			request.RegionName,
+			request.CityName,
 			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
 			verificationType,
 			reuseType,
@@ -463,8 +463,8 @@ public sealed class TasksController : ControllerBase
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromQuery] bool onlyMine = true,
-		[FromQuery] int? regionId = null,
-		[FromQuery] int? cityId = null,
+		[FromQuery] string? regionName = null,
+		[FromQuery] string? cityName = null,
 		[FromQuery] string? status = null,
 		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
 		[FromQuery] bool includeExpiredDeadlines = false,
@@ -484,7 +484,7 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
-		var invalidFilters = TryBuildFeedFilterValidationProblem(regionId, cityId);
+		var invalidFilters = TryBuildFeedFilterValidationProblem(regionName, cityName);
 		if(invalidFilters is not null)
 		{
 			return invalidFilters;
@@ -520,11 +520,11 @@ public sealed class TasksController : ControllerBase
 		{
 			tasks = await _tasks.GetByAdminAsync(actorUserId, cancellationToken);
 		}
-		else if(regionId is not null)
+		else if(!string.IsNullOrWhiteSpace(regionName))
 		{
-			tasks = cityId is null
-				? await _tasks.GetByRegionAsync(regionId.Value, cancellationToken)
-				: await _tasks.GetByRegionAndCityAsync(regionId.Value, cityId.Value, cancellationToken);
+			tasks = string.IsNullOrWhiteSpace(cityName)
+				? await _tasks.GetByRegionAsync(regionName!, cancellationToken)
+				: await _tasks.GetByRegionAndCityAsync(regionName!, cityName!, cancellationToken);
 		}
 		else
 		{
@@ -545,11 +545,13 @@ public sealed class TasksController : ControllerBase
 
 		IEnumerable<TaskModel> filtered = tasks;
 
-		if(regionId is not null)
+		if(!string.IsNullOrWhiteSpace(regionName))
 		{
-			filtered = cityId is null
-				? filtered.Where(t => t.RegionId == regionId.Value)
-				: filtered.Where(t => t.RegionId == regionId.Value && t.CityId == cityId.Value);
+			filtered = string.IsNullOrWhiteSpace(cityName)
+				? filtered.Where(t => string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase))
+				: filtered.Where(t =>
+					string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase)
+					&& string.Equals(t.CityName, cityName, StringComparison.OrdinalIgnoreCase));
 		}
 
 		if(normalizedStatusFilter is not null)
@@ -980,8 +982,8 @@ public sealed class TasksController : ControllerBase
 
 		public string? ExecutionLocation { get; set; }
 		public DateTimeOffset? DeadlineAt { get; set; }
-		public int RegionId { get; set; }
-		public int? CityId { get; set; }
+		public string RegionName { get; set; } = string.Empty;
+		public string? CityName { get; set; }
 		public List<Guid>? TrustedAdminIds { get; set; }
 	}
 
@@ -999,8 +1001,8 @@ public sealed class TasksController : ControllerBase
 
 		public string? ExecutionLocation { get; set; }
 		public DateTimeOffset? DeadlineAt { get; set; }
-		public int RegionId { get; set; }
-		public int? CityId { get; set; }
+		public string RegionName { get; set; } = string.Empty;
+		public string? CityName { get; set; }
 		public List<Guid>? TrustedAdminIds { get; set; }
 	}
 
@@ -1071,32 +1073,32 @@ public sealed class TasksController : ControllerBase
 				detail: $"Передайте actorUserId и заголовок {ActorPasswordHeader}.");
 	}
 
-	private IActionResult? TryBuildFeedFilterValidationProblem(int? regionId, int? cityId)
+	private IActionResult? TryBuildFeedFilterValidationProblem(string? regionName, string? cityName)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-		if(regionId is not null && regionId.Value <= 0)
+		if(regionName is not null && string.IsNullOrWhiteSpace(regionName))
 		{
-			errors["regionId"] = new[] { "RegionId must be positive." };
+			errors["regionName"] = new[] { "RegionName must not be empty." };
 		}
 
-		if(cityId is not null)
+		if(cityName is not null)
 		{
 			var list = new List<string>();
 
-			if(cityId.Value <= 0)
+			if(string.IsNullOrWhiteSpace(cityName))
 			{
-				list.Add("CityId must be positive.");
+				list.Add("CityName must not be empty.");
 			}
 
-			if(regionId is null)
+			if(string.IsNullOrWhiteSpace(regionName))
 			{
-				list.Add("cityId can be used only together with regionId.");
+				list.Add("cityName can be used only together with regionName.");
 			}
 
 			if(list.Count > 0)
 			{
-				errors["cityId"] = list.ToArray();
+				errors["cityName"] = list.ToArray();
 			}
 		}
 
@@ -1106,7 +1108,7 @@ public sealed class TasksController : ControllerBase
 				ApiErrorCodes.ValidationFailed,
 				errors,
 				title: "Некорректный запрос.",
-				detail: "Проверьте параметры regionId и cityId (cityId допускается только вместе с regionId).");
+				detail: "Проверьте параметры regionName и cityName (cityName допускается только вместе с regionName).");
 	}
 
 	private IActionResult? TryBuildFeedPaginationValidationProblem(int? start, int? end)
@@ -1540,8 +1542,8 @@ public sealed class TasksController : ControllerBase
 			t.PublishedAt,
 			t.DeadlineAt,
 			NormalizeTaskStatusForContract(t),
-			t.RegionId,
-			t.CityId,
+			t.RegionName,
+			t.CityName,
 			t.TrustedAdminIds,
 			t.VerificationType,
 			t.ReuseType,

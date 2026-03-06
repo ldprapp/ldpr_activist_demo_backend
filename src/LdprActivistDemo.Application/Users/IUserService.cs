@@ -12,9 +12,9 @@ public interface IUserService
 	Task<bool> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword, CancellationToken cancellationToken);
 	Task<bool> UpdateAsync(UserUpdateModel model, string actorPassword, CancellationToken cancellationToken);
 	Task<bool> ChangePhoneAsync(Guid userId, string password, string newPhoneNumber, string otpCode, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(string regionName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(string cityName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken);
 	Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken);

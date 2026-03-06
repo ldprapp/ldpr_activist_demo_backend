@@ -1,3 +1,3 @@
 ﻿namespace LdprActivistDemo.Application.Geo.Models;
 
-public sealed record CityCreateModel(int RegionId, string Name);
+public sealed record CityCreateModel(string RegionName, string Name);

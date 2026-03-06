@@ -74,8 +74,8 @@ public sealed class UsersController : ControllerBase
 					PhoneNumber: request.PhoneNumber,
 					Password: request.Password,
 					BirthDate: request.BirthDate,
-					RegionId: request.RegionId,
-					CityId: request.CityId,
+					RegionName: request.RegionName,
+					CityName: request.CityName,
 					AvatarImageId: avatarImageId),
 				cancellationToken);
 
@@ -545,8 +545,8 @@ public sealed class UsersController : ControllerBase
 					MiddleName: request.MiddleName,
 					Gender: request.Gender,
 					BirthDate: request.BirthDate,
-					RegionId: request.RegionId,
-					CityId: request.CityId,
+					RegionName: request.RegionName,
+					CityName: request.CityName,
 					AvatarImageId: avatarImageId),
 				actorPassword,
 				cancellationToken);
@@ -640,11 +640,11 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
-	[HttpGet("by-region/{regionId:int}")]
+	[HttpGet("by-region/{regionName}")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByRegion(
-		int regionId,
+		string regionName,
 		[FromQuery] int? start,
 		[FromQuery] int? end,
 		CancellationToken cancellationToken)
@@ -655,17 +655,17 @@ public sealed class UsersController : ControllerBase
 			return invalidPagination;
 		}
 
-		var users = await _users.GetUsersByRegionAsync(regionId, cancellationToken);
+		var users = await _users.GetUsersByRegionAsync(regionName, cancellationToken);
 		var dtos = users.Select(ToDto).ToList();
 		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
 
-	[HttpGet("by-city/{regionId:int}/{cityId:int}")]
+	[HttpGet("by-city/{regionName}/{cityName}")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByCity(
-		int regionId,
-		int cityId,
+		string regionName,
+		string cityName,
 		[FromQuery] int? start,
 		[FromQuery] int? end,
 		CancellationToken cancellationToken)
@@ -676,7 +676,7 @@ public sealed class UsersController : ControllerBase
 			return invalidPagination;
 		}
 
-		var users = await _users.GetUsersByRegionAndCityAsync(regionId, cityId, cancellationToken);
+		var users = await _users.GetUsersByRegionAndCityAsync(regionName, cityName, cancellationToken);
 		var dtos = users.Select(ToDto).ToList();
 		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
@@ -722,8 +722,8 @@ public sealed class UsersController : ControllerBase
 			u.Gender,
 			u.PhoneNumber,
 			u.BirthDate,
-			u.RegionId,
-			u.CityId,
+			u.RegionName,
+			u.CityName,
 			u.IsPhoneConfirmed)
 	{
 		AvatarImageUrl = u.AvatarImageUrl,
@@ -811,8 +811,8 @@ public sealed class UsersController : ControllerBase
 		public string PhoneNumber { get; set; } = string.Empty;
 		public string Password { get; set; } = string.Empty;
 		public DateOnly BirthDate { get; set; }
-		public int RegionId { get; set; }
-		public int CityId { get; set; }
+		public string RegionName { get; set; } = string.Empty;
+		public string CityName { get; set; } = string.Empty;
 
 		public IFormFile? AvatarImage { get; set; }
 	}
@@ -824,8 +824,8 @@ public sealed class UsersController : ControllerBase
 		public string? MiddleName { get; set; }
 		public string? Gender { get; set; }
 		public DateOnly BirthDate { get; set; }
-		public int RegionId { get; set; }
-		public int CityId { get; set; }
+		public string RegionName { get; set; } = string.Empty;
+		public string CityName { get; set; } = string.Empty;
 
 		public IFormFile? AvatarImage { get; set; }
 	}
@@ -839,8 +839,8 @@ public sealed class UsersController : ControllerBase
 		if(string.IsNullOrWhiteSpace(r.PhoneNumber)) errors[nameof(r.PhoneNumber)] = new[] { "PhoneNumber is required." };
 		else if(!IsValidPhoneNumber(r.PhoneNumber)) errors[nameof(r.PhoneNumber)] = new[] { "PhoneNumber has invalid format." };
 		if(string.IsNullOrWhiteSpace(r.Password)) errors[nameof(r.Password)] = new[] { "Password is required." };
-		if(r.RegionId <= 0) errors[nameof(r.RegionId)] = new[] { "RegionId must be positive." };
-		if(r.CityId <= 0) errors[nameof(r.CityId)] = new[] { "CityId must be positive." };
+		if(string.IsNullOrWhiteSpace(r.RegionName)) errors[nameof(r.RegionName)] = new[] { "RegionName is required." };
+		if(string.IsNullOrWhiteSpace(r.CityName)) errors[nameof(r.CityName)] = new[] { "CityName is required." };
 
 		return errors;
 	}
@@ -894,8 +894,8 @@ public sealed class UsersController : ControllerBase
 
 		if(string.IsNullOrWhiteSpace(r.LastName)) errors[nameof(r.LastName)] = new[] { "LastName is required." };
 		if(string.IsNullOrWhiteSpace(r.FirstName)) errors[nameof(r.FirstName)] = new[] { "FirstName is required." };
-		if(r.RegionId <= 0) errors[nameof(r.RegionId)] = new[] { "RegionId must be positive." };
-		if(r.CityId <= 0) errors[nameof(r.CityId)] = new[] { "CityId must be positive." };
+		if(string.IsNullOrWhiteSpace(r.RegionName)) errors[nameof(r.RegionName)] = new[] { "RegionName is required." };
+		if(string.IsNullOrWhiteSpace(r.CityName)) errors[nameof(r.CityName)] = new[] { "CityName is required." };
 
 		return errors;
 	}

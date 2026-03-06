@@ -40,13 +40,12 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.Forbidden);
 		}
 
-		var geoError = await EnsureRegionCityAsync(model.RegionId, model.CityId, cancellationToken);
-
-		if(geoError != TaskOperationError.None)
+		var geoResolution = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
+		if(geoResolution.Error != TaskOperationError.None)
 		{
-			_logger.LogWarning("CreateTask rejected: invalid geo. ActorUserId={ActorUserId}, RegionId={RegionId}, CityId={CityId}, Error={Error}.",
-				actorUserId, model.RegionId, model.CityId, geoError);
-			return TaskOperationResult<Guid>.Fail(geoError);
+			_logger.LogWarning("CreateTask rejected: invalid geo. ActorUserId={ActorUserId}, RegionName={RegionName}, CityName={CityName}, Error={Error}.",
+				actorUserId, model.RegionName, model.CityName, geoResolution.Error);
+			return TaskOperationResult<Guid>.Fail(geoResolution.Error);
 		}
 
 		if(model.RewardPoints < 0)
@@ -130,8 +129,8 @@ public sealed class TaskRepository : ITaskRepository
 			VerificationType = verificationType,
 			ReuseType = reuseType,
 			AutoVerificationActionType = autoVerificationActionType,
-			RegionId = model.RegionId,
-			CityId = model.CityId,
+			RegionId = geoResolution.RegionId,
+			CityId = geoResolution.CityId,
 		};
 
 		_db.Tasks.Add(entity);
@@ -186,13 +185,12 @@ public sealed class TaskRepository : ITaskRepository
 			}
 		}
 
-		var geoError = await EnsureRegionCityAsync(model.RegionId, model.CityId, cancellationToken);
-
-		if(geoError != TaskOperationError.None)
+		var geoResolution = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
+		if(geoResolution.Error != TaskOperationError.None)
 		{
-			_logger.LogWarning("UpdateTask rejected: invalid geo. ActorUserId={ActorUserId}, TaskId={TaskId}, RegionId={RegionId}, CityId={CityId}, Error={Error}.",
-				actorUserId, taskId, model.RegionId, model.CityId, geoError);
-			return TaskOperationResult.Fail(geoError);
+			_logger.LogWarning("UpdateTask rejected: invalid geo. ActorUserId={ActorUserId}, TaskId={TaskId}, RegionName={RegionName}, CityName={CityName}, Error={Error}.",
+				actorUserId, taskId, model.RegionName, model.CityName, geoResolution.Error);
+			return TaskOperationResult.Fail(geoResolution.Error);
 		}
 
 		if(model.RewardPoints < 0)
@@ -303,8 +301,8 @@ public sealed class TaskRepository : ITaskRepository
 
 		task.ExecutionLocation = model.ExecutionLocation;
 		task.DeadlineAt = model.DeadlineAt ?? task.PublishedAt;
-		task.RegionId = model.RegionId;
-		task.CityId = model.CityId;
+		task.RegionId = geoResolution.RegionId;
+		task.CityId = geoResolution.CityId;
 
 		var existing = await _db.TaskTrustedAdmins.Where(x => x.TaskId == task.Id).ToListAsync(cancellationToken);
 		_db.TaskTrustedAdmins.RemoveRange(existing);
@@ -431,7 +429,10 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.Forbidden);
 		}
 
-		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
+		var task = await _db.Tasks.AsNoTracking()
+			.Include(x => x.Region)
+			.Include(x => x.City)
+			.FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
 
 		if(task is null)
 		{
@@ -443,12 +444,15 @@ public sealed class TaskRepository : ITaskRepository
 			.Select(x => x.AdminUserId)
 			.ToListAsync(cancellationToken);
 
-		return TaskOperationResult<TaskModel>.Success(ToModel(task, trusted));
+		return TaskOperationResult<TaskModel>.Success(ToModel(task, trusted, task.Region.Name, task.City?.Name));
 	}
 
 	public async Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken)
 	{
-		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
+		var task = await _db.Tasks.AsNoTracking()
+			.Include(x => x.Region)
+			.Include(x => x.City)
+			.FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
 		if(task is null)
 		{
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.TaskNotFound);
@@ -459,33 +463,42 @@ public sealed class TaskRepository : ITaskRepository
 		   .Select(x => x.AdminUserId)
 		   .ToListAsync(cancellationToken);
 
-		return TaskOperationResult<TaskModel>.Success(ToModel(task, trusted));
+		return TaskOperationResult<TaskModel>.Success(ToModel(task, trusted, task.Region.Name, task.City?.Name));
 	}
 
-	public async Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken)
 	{
+		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+
 		var tasks = await _db.Tasks.AsNoTracking()
-			.Where(x => x.RegionId == regionId && (x.CityId == null || x.CityId == cityId))
+			.Where(x =>
+				x.Region.Name.ToLower() == regionKey
+				&& (x.CityId == null || (x.City != null && x.City.Name.ToLower() == cityKey)))
 			.OrderByDescending(x => x.PublishedAt)
 			.ToListAsync(cancellationToken);
 
 		return await LoadTrustedAndMapAsync(tasks, cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<TaskModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<TaskModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken)
 	{
+		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+
 		var tasks = await _db.Tasks.AsNoTracking()
-			.Where(x => x.RegionId == regionId && x.CityId == null)
+			.Where(x => x.Region.Name.ToLower() == regionKey && x.CityId == null)
 			.OrderByDescending(x => x.PublishedAt)
 			.ToListAsync(cancellationToken);
 
 		return await LoadTrustedAndMapAsync(tasks, cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<TaskModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<TaskModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken)
 	{
+		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+
 		var tasks = await _db.Tasks.AsNoTracking()
-			.Where(x => x.CityId == cityId)
+			.Where(x => x.City != null && x.City.Name.ToLower() == cityKey)
 			.OrderByDescending(x => x.PublishedAt)
 			.ToListAsync(cancellationToken);
 
@@ -567,26 +580,44 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult<IReadOnlyList<TaskModel>>.Success(mapped);
 	}
 
-	private async Task<TaskOperationError> EnsureRegionCityAsync(int regionId, int? cityId, CancellationToken cancellationToken)
+	private async Task<(TaskOperationError Error, int RegionId, int? CityId)> ResolveRegionCityAsync(
+		string regionName,
+		string? cityName,
+		CancellationToken cancellationToken)
 	{
-		var regionExists = await _db.Regions.AsNoTracking().AnyAsync(x => x.Id == regionId, cancellationToken);
-		if(!regionExists)
+		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+		if(string.IsNullOrWhiteSpace(regionKey))
 		{
-			return TaskOperationError.RegionNotFound;
+			return (TaskOperationError.RegionNotFound, 0, null);
 		}
 
-		if(cityId is null)
+		var region = await _db.Regions.AsNoTracking()
+			.Where(x => x.Name.ToLower() == regionKey)
+			.Select(x => new { x.Id })
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if(region is null)
 		{
-			return TaskOperationError.None;
+			return (TaskOperationError.RegionNotFound, 0, null);
 		}
 
-		var city = await _db.Cities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == cityId.Value, cancellationToken);
-		if(city is null || city.RegionId != regionId)
+		if(string.IsNullOrWhiteSpace(cityName))
 		{
-			return TaskOperationError.CityRegionMismatch;
+			return (TaskOperationError.None, region.Id, null);
 		}
 
-		return TaskOperationError.None;
+		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+		var city = await _db.Cities.AsNoTracking()
+			.Where(x => x.RegionId == region.Id && x.Name.ToLower() == cityKey)
+			.Select(x => new { x.Id })
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if(city is null)
+		{
+			return (TaskOperationError.CityRegionMismatch, 0, null);
+		}
+
+		return (TaskOperationError.None, region.Id, city.Id);
 	}
 
 	private async Task<IReadOnlyList<TaskModel>> LoadTrustedAndMapAsync(IReadOnlyList<TaskEntity> tasks, CancellationToken cancellationToken)
@@ -605,9 +636,30 @@ public sealed class TaskRepository : ITaskRepository
 				g => (IReadOnlyList<Guid>)g.Select(x => x.AdminUserId).ToList(),
 				cancellationToken);
 
+		var geoMap = await _db.Tasks.AsNoTracking()
+			.Where(x => taskIds.Contains(x.Id))
+			.Select(x => new
+			{
+				x.Id,
+				RegionName = x.Region.Name,
+				CityName = x.City != null ? x.City.Name : null,
+			})
+			.ToDictionaryAsync(
+				x => x.Id,
+				x => (x.RegionName, x.CityName),
+				cancellationToken);
+
 		return tasks
-			.Select(t => ToModel(t, trustedMap.TryGetValue(t.Id, out var ids) ? ids : Array.Empty<Guid>()))
-			.ToList();
+			.Select(t =>
+			{
+				var geo = geoMap[t.Id];
+				return ToModel(
+					t,
+					trustedMap.TryGetValue(t.Id, out var ids) ? ids : Array.Empty<Guid>(),
+					geo.RegionName,
+					geo.CityName);
+			})
+ 			.ToList();
 	}
 
 	private static bool TryNormalizeVerificationTypeForCreate(string? raw, out string normalized)
@@ -754,7 +806,7 @@ public sealed class TaskRepository : ITaskRepository
 		return false;
 	}
 
-	private static TaskModel ToModel(TaskEntity t, IReadOnlyList<Guid> trustedAdminIds)
+	private static TaskModel ToModel(TaskEntity t, IReadOnlyList<Guid> trustedAdminIds, string regionName, string? cityName)
 		=> new(
 			t.Id,
 			t.AuthorUserId,
@@ -767,10 +819,13 @@ public sealed class TaskRepository : ITaskRepository
 			t.PublishedAt,
 			t.DeadlineAt,
 			t.Status,
-			t.RegionId,
-			t.CityId,
+			regionName,
+			cityName,
 			trustedAdminIds,
 			t.VerificationType,
 			t.ReuseType,
 			t.AutoVerificationActionType);
+
+	private static string NormalizeName(string? value)
+		=> (value ?? string.Empty).Trim();
 }

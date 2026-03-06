@@ -8,8 +8,8 @@ public sealed record UserDto(
 	string? Gender,
 	string PhoneNumber,
 	DateOnly BirthDate,
-	int RegionId,
-	int CityId,
+	string RegionName,
+	string CityName,
 	bool IsPhoneConfirmed)
 {
 	public string? AvatarImageUrl { get; init; }

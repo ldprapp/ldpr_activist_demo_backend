@@ -20,9 +20,11 @@ public static class ApiErrorCodes
 	public const string PhoneChangeNotAllowed = "phone_change_not_allowed";
 
 	public const string GeoRegionNotFound = "geo_region_not_found";
+	public const string GeoCityNotFound = "geo_city_not_found";
 	public const string GeoDuplicate = "geo_duplicate";
 	public const string GeoInvalidName = "geo_invalid_name";
 	public const string GeoUnauthorized = "geo_unauthorized";
+	public const string GeoInUse = "geo_in_use";
 
 	public const string Forbidden = "forbidden";
 	public const string TaskNotFound = "task_not_found";

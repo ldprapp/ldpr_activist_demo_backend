@@ -7,4 +7,6 @@ public enum GeoMutationError
 	InvalidName = 2,
 	RegionNotFound = 3,
 	Duplicate = 4,
+	CityNotFound = 5,
+	InUse = 6,
 }

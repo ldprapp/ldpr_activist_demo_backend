@@ -8,7 +8,7 @@ public sealed record UserPublicModel(
 	string? Gender,
 	string PhoneNumber,
 	DateOnly BirthDate,
-	int RegionId,
-	int CityId,
+	string RegionName,
+	string CityName,
 	bool IsPhoneConfirmed,
 	string? AvatarImageUrl);

@@ -106,14 +106,14 @@ public sealed class UserService : IUserService
 		return true;
 	}
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(int regionId, CancellationToken cancellationToken) =>
-		_users.GetByRegionAsync(regionId, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(string regionName, CancellationToken cancellationToken) =>
+		_users.GetByRegionAsync(regionName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(int cityId, CancellationToken cancellationToken) =>
-		_users.GetByCityAsync(cityId, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(string cityName, CancellationToken cancellationToken) =>
+		_users.GetByCityAsync(cityName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken) =>
-		_users.GetByRegionAndCityAsync(regionId, cityId, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken) =>
+		_users.GetByRegionAndCityAsync(regionName, cityName, cancellationToken);
 
 	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken) =>
 		_users.IsAdminAsync(userId, cancellationToken);
@@ -125,5 +125,5 @@ public sealed class UserService : IUserService
 		_users.GetAdminsAsync(start, end, cancellationToken);
 
 	private static UserPublicModel ToPublic(UserInternalModel u) =>
-		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionId, u.CityId, u.IsPhoneConfirmed, u.AvatarImageUrl);
+		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionName, u.CityName, u.IsPhoneConfirmed, u.AvatarImageUrl);
 }

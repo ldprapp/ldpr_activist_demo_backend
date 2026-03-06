@@ -8,6 +8,6 @@ public sealed record UserRegisterRequest(
 	string PhoneNumber,
 	string Password,
 	DateOnly BirthDate,
-	int RegionId,
-	int CityId,
+	string RegionName,
+	string CityName,
 	Guid? AvatarImageId = null);

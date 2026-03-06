@@ -38,14 +38,14 @@ public sealed class TaskService : ITaskService
 	public Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken)
 		=> _tasks.GetPublicAsync(taskId, cancellationToken);
 
-	public Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
-		=> _tasks.GetByRegionAndCityAsync(regionId, cityId, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken)
+		=> _tasks.GetByRegionAndCityAsync(regionName, cityName, cancellationToken);
 
-	public Task<IReadOnlyList<TaskModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken)
-		=> _tasks.GetByRegionAsync(regionId, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken)
+		=> _tasks.GetByRegionAsync(regionName, cancellationToken);
 
-	public Task<IReadOnlyList<TaskModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken)
-		=> _tasks.GetByCityAsync(cityId, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken)
+		=> _tasks.GetByCityAsync(cityName, cancellationToken);
 
 	public Task<IReadOnlyList<TaskModel>> GetByAdminAsync(Guid adminUserId, CancellationToken cancellationToken)
 		=> _tasks.GetByAdminAsync(adminUserId, cancellationToken);

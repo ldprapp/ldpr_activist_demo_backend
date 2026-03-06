@@ -19,25 +19,37 @@ public sealed class UserRepository : IUserRepository
 
 	public async Task<UserInternalModel?> GetInternalByIdAsync(Guid userId, CancellationToken cancellationToken)
 	{
-		var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+		var u = await _db.Users.AsNoTracking()
+			.Include(x => x.Region)
+			.Include(x => x.City)
+			.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		return u is null ? null : ToInternal(u);
 	}
 
 	public async Task<UserInternalModel?> GetInternalByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
 	{
-		var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
+		var u = await _db.Users.AsNoTracking()
+			.Include(x => x.Region)
+			.Include(x => x.City)
+			.FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
 		return u is null ? null : ToInternal(u);
 	}
 
 	public async Task<UserPublicModel?> GetPublicByIdAsync(Guid userId, CancellationToken cancellationToken)
 	{
-		var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+		var u = await _db.Users.AsNoTracking()
+			.Include(x => x.Region)
+			.Include(x => x.City)
+			.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		return u is null ? null : ToPublic(u);
 	}
 
 	public async Task<UserPublicModel?> GetPublicByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
 	{
-		var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
+		var u = await _db.Users.AsNoTracking()
+			.Include(x => x.Region)
+			.Include(x => x.City)
+			.FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
 		return u is null ? null : ToPublic(u);
 	}
 
@@ -95,8 +107,8 @@ public sealed class UserRepository : IUserRepository
 	{
 		var gender = NormalizeGenderOrThrow(model.Gender);
 
-		var city = await _db.Cities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == model.CityId, cancellationToken);
-		if(city is null || city.RegionId != model.RegionId)
+		var geo = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
+		if(!geo.IsSuccess)
 		{
 			throw new InvalidOperationException("City does not belong to Region or does not exist.");
 		}
@@ -120,8 +132,8 @@ public sealed class UserRepository : IUserRepository
 			PhoneNumber = model.PhoneNumber,
 			PasswordHash = _passwordHasher.Hash(model.Password),
 			BirthDate = model.BirthDate,
-			RegionId = model.RegionId,
-			CityId = model.CityId,
+			RegionId = geo.RegionId,
+			CityId = geo.CityId,
 			IsAdmin = false,
 			IsPhoneConfirmed = false,
 			AvatarImageUrl = model.AvatarImageId.HasValue && model.AvatarImageId.Value != Guid.Empty
@@ -212,8 +224,8 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
-		var city = await _db.Cities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == model.CityId, cancellationToken);
-		if(city is null || city.RegionId != model.RegionId)
+		var geo = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
+		if(!geo.IsSuccess)
 		{
 			throw new InvalidOperationException("City does not belong to Region or does not exist.");
 		}
@@ -223,8 +235,8 @@ public sealed class UserRepository : IUserRepository
 		u.MiddleName = model.MiddleName;
 		u.Gender = NormalizeGenderOrThrow(model.Gender);
 		u.BirthDate = model.BirthDate;
-		u.RegionId = model.RegionId;
-		u.CityId = model.CityId;
+		u.RegionId = geo.RegionId;
+		u.CityId = geo.CityId;
 
 		if(model.AvatarImageId.HasValue)
 		{
@@ -276,10 +288,12 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(int regionId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken)
 	{
+		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+
 		return await _db.Users.AsNoTracking()
-			.Where(x => x.RegionId == regionId)
+			.Where(x => x.Region.Name.ToLower() == regionKey)
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
 			.Select(x => new UserPublicModel(
 				x.Id,
@@ -289,17 +303,19 @@ public sealed class UserRepository : IUserRepository
 				x.Gender,
 				x.PhoneNumber,
 				x.BirthDate,
-				x.RegionId,
-				x.CityId,
+				x.Region.Name,
+				x.City.Name,
 				x.IsPhoneConfirmed,
 				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(int cityId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken)
 	{
+		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+
 		return await _db.Users.AsNoTracking()
-			.Where(x => x.CityId == cityId)
+			.Where(x => x.City.Name.ToLower() == cityKey)
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
 			.Select(x => new UserPublicModel(
 				x.Id,
@@ -309,17 +325,20 @@ public sealed class UserRepository : IUserRepository
 				x.Gender,
 				x.PhoneNumber,
 				x.BirthDate,
-				x.RegionId,
-				x.CityId,
+				x.Region.Name,
+				x.City.Name,
 				x.IsPhoneConfirmed,
 				x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(int regionId, int cityId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken)
 	{
+		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+
 		return await _db.Users.AsNoTracking()
-			.Where(x => x.RegionId == regionId && x.CityId == cityId)
+			.Where(x => x.Region.Name.ToLower() == regionKey && x.City.Name.ToLower() == cityKey)
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
 			.Select(x => new UserPublicModel(
 				x.Id,
@@ -329,11 +348,11 @@ public sealed class UserRepository : IUserRepository
 				x.Gender,
 				x.PhoneNumber,
 				x.BirthDate,
-				x.RegionId,
-				x.CityId,
-				x.IsPhoneConfirmed,
-				x.AvatarImageUrl))
-			.ToListAsync(cancellationToken);
+				x.Region.Name,
+				x.City.Name,
+ 				x.IsPhoneConfirmed,
+ 				x.AvatarImageUrl))
+ 			.ToListAsync(cancellationToken);
 	}
 
 	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken)
@@ -374,8 +393,8 @@ public sealed class UserRepository : IUserRepository
 				u.Gender,
 				u.PhoneNumber,
 				u.BirthDate,
-				u.RegionId,
-				u.CityId,
+				u.Region.Name,
+				u.City.Name,
 				u.IsPhoneConfirmed,
 				u.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
@@ -434,8 +453,8 @@ public sealed class UserRepository : IUserRepository
 			u.PhoneNumber,
 			u.PasswordHash,
 			u.BirthDate,
-			u.RegionId,
-			u.CityId,
+			u.Region.Name,
+			u.City.Name,
 			u.IsAdmin,
 			u.IsPhoneConfirmed,
 			u.AvatarImageUrl);
@@ -449,8 +468,29 @@ public sealed class UserRepository : IUserRepository
 			u.Gender,
 			u.PhoneNumber,
 			u.BirthDate,
-			u.RegionId,
-			u.CityId,
+			u.Region.Name,
+			u.City.Name,
 			u.IsPhoneConfirmed,
 			u.AvatarImageUrl);
+
+	private async Task<(bool IsSuccess, int RegionId, int CityId)> ResolveRegionCityAsync(
+		string regionName,
+		string cityName,
+		CancellationToken cancellationToken)
+	{
+		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+
+		var city = await _db.Cities.AsNoTracking()
+			.Where(x => x.Region.Name.ToLower() == regionKey && x.Name.ToLower() == cityKey)
+			.Select(x => new { x.RegionId, x.Id })
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return city is null
+			? (false, 0, 0)
+			: (true, city.RegionId, city.Id);
+	}
+
+	private static string NormalizeName(string? value)
+		=> (value ?? string.Empty).Trim();
 }

@@ -1,5 +1,4 @@
 ﻿using LdprActivistDemo.Application.Geo;
-using LdprActivistDemo.Application.Geo.Seeding;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Tasks;
@@ -37,8 +36,6 @@ public static class ServiceCollectionExtensions
 			services.AddSingleton<IPasswordResetStore, InMemoryPasswordResetStore>();
 		}
 
-		services.Configure<GeoSeedOptions>(configuration.GetSection("GeoSeed"));
-		services.AddScoped<GeoDbSeeder>();
 		services.AddScoped<IRegionRepository, RegionRepository>();
 		services.AddScoped<ICityRepository, CityRepository>();
 		services.AddScoped<IUserRepository, UserRepository>();

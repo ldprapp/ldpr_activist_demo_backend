@@ -388,13 +388,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.Gender,
 					u.PhoneNumber,
 					u.BirthDate,
-					u.RegionId,
-					u.CityId,
+					RegionName = u.Region.Name,
+					CityName = u.City.Name,
 					u.IsPhoneConfirmed,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionId, x.CityId, x.IsPhoneConfirmed, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
 	}
@@ -425,13 +425,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.Gender,
 					u.PhoneNumber,
 					u.BirthDate,
-					u.RegionId,
-					u.CityId,
+					RegionName = u.Region.Name,
+					CityName = u.City.Name,
 					u.IsPhoneConfirmed,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionId, x.CityId, x.IsPhoneConfirmed, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
