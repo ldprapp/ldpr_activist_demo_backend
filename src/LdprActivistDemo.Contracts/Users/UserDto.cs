@@ -10,6 +10,7 @@ public sealed record UserDto(
 	DateOnly BirthDate,
 	string RegionName,
 	string CityName,
+	string Role,
 	bool IsPhoneConfirmed)
 {
 	public string? AvatarImageUrl { get; init; }

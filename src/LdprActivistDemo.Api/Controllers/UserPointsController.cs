@@ -208,7 +208,7 @@ public sealed class UserPointsController : ControllerBase
 				StatusCodes.Status403Forbidden,
 				ApiErrorCodes.Forbidden,
 				"Нет доступа.",
-				"Операция доступна только администратору."),
+				"Операция не доступна данному пользователю."),
 
 			UserPointsError.InsufficientBalance => this.ProblemWithCode(
 				StatusCodes.Status409Conflict,

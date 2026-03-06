@@ -1,4 +1,5 @@
-﻿using LdprActivistDemo.Contracts.Tasks;
+﻿using LdprActivistDemo.Application.Users.Models;
+using LdprActivistDemo.Contracts.Tasks;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -65,6 +66,9 @@ public sealed class AppDbContext : DbContext
 				t.HasCheckConstraint(
 					"ck_users_gender_allowed",
 					"\"Gender\" IS NULL OR \"Gender\" IN ('male','female')");
+				t.HasCheckConstraint(
+					"ck_users_role_allowed",
+					$"\"Role\" IN ('{UserRoles.Activist}','{UserRoles.Coordinator}','{UserRoles.Admin}')");
 			});
 			b.HasKey(x => x.Id);
 
@@ -72,6 +76,9 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.FirstName).IsRequired();
 
 			b.Property(x => x.PhoneNumber).IsRequired();
+			b.Property(x => x.Role)
+				.IsRequired()
+				.HasDefaultValue(UserRoles.Activist);
 			b.HasIndex(x => x.PhoneNumber).IsUnique();
 
 			b.Property(x => x.PasswordHash).IsRequired();

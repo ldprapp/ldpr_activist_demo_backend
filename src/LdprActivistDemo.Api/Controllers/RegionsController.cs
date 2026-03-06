@@ -329,7 +329,7 @@ public sealed class RegionsController : ControllerBase
 				StatusCodes.Status401Unauthorized,
 				ApiErrorCodes.GeoUnauthorized,
 				"Нет доступа.",
-				"Неверные учётные данные или пользователь не админ."),
+				"Неверные учётные данные или у пользователя нет роли admin."),
 			GeoMutationError.RegionNotFound => this.ProblemWithCode(
 				StatusCodes.Status404NotFound,
 				ApiErrorCodes.GeoRegionNotFound,

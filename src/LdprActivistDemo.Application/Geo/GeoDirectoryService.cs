@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Geo.Models;
 using LdprActivistDemo.Application.Users;
+using LdprActivistDemo.Application.Users.Models;
 
 namespace LdprActivistDemo.Application.Geo;
 
@@ -181,13 +182,18 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 	private async Task<bool> HasAdminAccessAsync(Guid actorUserId, string actorPassword, CancellationToken cancellationToken)
 	{
 		var ok = await _users.ValidatePasswordAsync(actorUserId, actorPassword, cancellationToken);
-
 		if(!ok)
 		{
 			return false;
 		}
 
-		return await _users.IsAdminAsync(actorUserId, cancellationToken);
+		var actor = await _users.GetInternalByIdAsync(actorUserId, cancellationToken);
+		if(actor is null)
+		{
+			return false;
+		}
+
+		return UserRoleRules.IsAdmin(actor.Role);
 	}
 
 	private static string NormalizeName(string? value)

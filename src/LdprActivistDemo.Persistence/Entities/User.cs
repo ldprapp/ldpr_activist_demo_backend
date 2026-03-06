@@ -1,4 +1,6 @@
-﻿namespace LdprActivistDemo.Persistence;
+﻿using LdprActivistDemo.Application.Users.Models;
+
+namespace LdprActivistDemo.Persistence;
 
 public sealed class User
 {
@@ -26,7 +28,7 @@ public sealed class User
 
 	public City City { get; set; } = null!;
 
-	public bool IsAdmin { get; set; }
+	public string Role { get; set; } = UserRoles.Activist;
 
 	public bool IsPhoneConfirmed { get; set; }
 

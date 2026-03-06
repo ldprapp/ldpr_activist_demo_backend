@@ -1502,7 +1502,7 @@ public sealed class TasksController : ControllerBase
 		{
 			TaskOperationError.ValidationFailed => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.ValidationFailed, "Некорректный запрос.", "Проверьте тело запроса и параметры."),
 			TaskOperationError.InvalidCredentials => this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", $"Проверьте id пользователя и заголовок {ActorPasswordHeader}."),
-			TaskOperationError.Forbidden => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.Forbidden, "Нет доступа.", "Операция запрещена: требуется автор задачи или назначенный ответственный администратор."),
+			TaskOperationError.Forbidden => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.Forbidden, "Нет доступа.", "Операция запрещена: требуется автор задачи или назначенный ответственный координатор/администратор."),
 			TaskOperationError.TaskAccessDenied => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.TaskAccessDenied, "Нет доступа.", "Задача недоступна пользователю или операция запрещена для текущей роли."),
 			TaskOperationError.TaskNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskNotFound, "Задача не найдена."),
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),
@@ -1512,7 +1512,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя изменять подтверждённую заявку."),
 			TaskOperationError.SubmissionAlreadyExists => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskSubmissionExists, "Заявка уже существует.", "Повторная отправка запрещена."),
 			TaskOperationError.SubmissionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskSubmissionNotFound, "Заявка не найдена."),
-			TaskOperationError.UserNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.", "Пользователь не существует или один из TrustedAdminIds не является администратором."),
+			TaskOperationError.UserNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.", "Пользователь не существует или один из TrustedAdminIds не имеет роли coordinator/admin."),
 			_ => this.ProblemWithCode(StatusCodes.Status500InternalServerError, ApiErrorCodes.InternalError, "Внутренняя ошибка."),
 		};
 

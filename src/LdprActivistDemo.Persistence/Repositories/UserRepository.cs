@@ -134,7 +134,7 @@ public sealed class UserRepository : IUserRepository
 			BirthDate = model.BirthDate,
 			RegionId = geo.RegionId,
 			CityId = geo.CityId,
-			IsAdmin = false,
+			Role = UserRoles.Activist,
 			IsPhoneConfirmed = false,
 			AvatarImageUrl = model.AvatarImageId.HasValue && model.AvatarImageId.Value != Guid.Empty
 				? model.AvatarImageId.Value.ToString("D")
@@ -273,116 +273,99 @@ public sealed class UserRepository : IUserRepository
 		return true;
 	}
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken)
-	{
-		var regionKey = NormalizeName(regionName).ToLowerInvariant();
+	public Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken) =>
+		GetByFiltersAsync(role: null, regionName: regionName, cityName: null, cancellationToken);
 
-		return await _db.Users.AsNoTracking()
-			.Where(x => x.Region.Name.ToLower() == regionKey)
-			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(
-				x.Id,
-				x.LastName,
-				x.FirstName,
-				x.MiddleName,
-				x.Gender,
-				x.PhoneNumber,
-				x.BirthDate,
-				x.Region.Name,
-				x.City.Name,
-				x.IsPhoneConfirmed,
-				x.AvatarImageUrl))
-			.ToListAsync(cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken) =>
+		GetByFiltersAsync(role: null, regionName: null, cityName: cityName, cancellationToken);
+
+	public Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken) =>
+		GetByFiltersAsync(role: null, regionName: regionName, cityName: cityName, cancellationToken);
+
+	public async Task<bool> SetRoleAsync(Guid userId, string role, CancellationToken cancellationToken)
+	{
+		if(userId == Guid.Empty)
+		{
+			return false;
+		}
+
+		if(!UserRoleRules.TryNormalizeRequiredRole(role, out var normalizedRole, out _))
+		{
+			throw new ArgumentException("Role is invalid.", nameof(role));
+		}
+
+		var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+		if(user is null)
+		{
+			return false;
+		}
+
+		user.Role = normalizedRole;
+		await _db.SaveChangesAsync(cancellationToken);
+		return true;
 	}
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken)
+	public async Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken)
 	{
-		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+		if(userId == Guid.Empty)
+		{
+			return null;
+		}
 
 		return await _db.Users.AsNoTracking()
-			.Where(x => x.City.Name.ToLower() == cityKey)
-			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(
-				x.Id,
-				x.LastName,
-				x.FirstName,
-				x.MiddleName,
-				x.Gender,
-				x.PhoneNumber,
-				x.BirthDate,
-				x.Region.Name,
-				x.City.Name,
-				x.IsPhoneConfirmed,
-				x.AvatarImageUrl))
-			.ToListAsync(cancellationToken);
+			.Where(x => x.Id == userId)
+			.Select(x => (string?)x.Role)
+			.FirstOrDefaultAsync(cancellationToken);
 	}
 
-	public async Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken)
-	{
-		var regionKey = NormalizeName(regionName).ToLowerInvariant();
-		var cityKey = NormalizeName(cityName).ToLowerInvariant();
-
-		return await _db.Users.AsNoTracking()
-			.Where(x => x.Region.Name.ToLower() == regionKey && x.City.Name.ToLower() == cityKey)
-			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(
-				x.Id,
-				x.LastName,
-				x.FirstName,
-				x.MiddleName,
-				x.Gender,
-				x.PhoneNumber,
-				x.BirthDate,
-				x.Region.Name,
-				x.City.Name,
- 				x.IsPhoneConfirmed,
- 				x.AvatarImageUrl))
- 			.ToListAsync(cancellationToken);
-	}
-
-	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken)
-		=> _db.Users.AsNoTracking().AnyAsync(x => x.Id == userId && x.IsAdmin, cancellationToken);
-
-	public async Task<IReadOnlyList<Guid>> GetAllAdminIdsAsync(CancellationToken cancellationToken)
-	{
-		return await _db.Users.AsNoTracking()
-			.Where(x => x.IsAdmin)
-			.Select(x => x.Id)
-			.ToListAsync(cancellationToken);
-	}
-
-	public async Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<UserPublicModel>> GetByFiltersAsync(
+		string? role,
+		string? regionName,
+		string? cityName,
+		CancellationToken cancellationToken)
 	{
 		IQueryable<User> query = _db.Users.AsNoTracking()
-			.Where(x => x.IsAdmin)
 			.OrderBy(x => x.LastName)
 			.ThenBy(x => x.FirstName)
 			.ThenBy(x => x.MiddleName);
 
-		if(start is not null && end is not null)
+		if(!UserRoleRules.TryNormalizeOptionalRole(role, out var normalizedRole, out _))
 		{
-			var skip = start.Value - 1;
-			var take = end.Value - start.Value + 1;
+			return Array.Empty<UserPublicModel>();
+		}
 
-			query = query
-				.Skip(skip)
-				.Take(take);
+		if(normalizedRole is not null)
+		{
+			query = query.Where(x => x.Role == normalizedRole);
+		}
+
+		if(!string.IsNullOrWhiteSpace(regionName))
+		{
+			var regionKey = NormalizeName(regionName).ToLowerInvariant();
+			query = query.Where(x => x.Region.Name.ToLower() == regionKey);
+		}
+
+		if(!string.IsNullOrWhiteSpace(cityName))
+		{
+			var cityKey = NormalizeName(cityName).ToLowerInvariant();
+			query = query.Where(x => x.City.Name.ToLower() == cityKey);
 		}
 
 		return await query
-			.Select(u => new UserPublicModel(
-				u.Id,
-				u.LastName,
-				u.FirstName,
-				u.MiddleName,
-				u.Gender,
-				u.PhoneNumber,
-				u.BirthDate,
-				u.Region.Name,
-				u.City.Name,
-				u.IsPhoneConfirmed,
-				u.AvatarImageUrl))
-			.ToListAsync(cancellationToken);
+		   .Select(u => new UserPublicModel(
+			   u.Id,
+			   u.LastName,
+			   u.FirstName,
+			   u.MiddleName,
+			   u.Gender,
+			   u.PhoneNumber,
+			   u.BirthDate,
+			   u.Region.Name,
+			   u.City.Name,
+			   u.Role,
+			   u.IsPhoneConfirmed,
+			   u.AvatarImageUrl))
+		   .ToListAsync(cancellationToken);
 	}
 
 	public async Task<bool> AddPointsAsync(Guid userId, int pointsToAdd, CancellationToken cancellationToken)
@@ -440,7 +423,7 @@ public sealed class UserRepository : IUserRepository
 			u.BirthDate,
 			u.Region.Name,
 			u.City.Name,
-			u.IsAdmin,
+			u.Role,
 			u.IsPhoneConfirmed,
 			u.AvatarImageUrl);
 
@@ -455,6 +438,7 @@ public sealed class UserRepository : IUserRepository
 			u.BirthDate,
 			u.Region.Name,
 			u.City.Name,
+			u.Role,
 			u.IsPhoneConfirmed,
 			u.AvatarImageUrl);
 

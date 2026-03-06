@@ -8,12 +8,14 @@ public sealed class UserService : IUserService
 	private readonly IUserRepository _users;
 	private readonly IOtpService _otp;
 	private readonly IUnconfirmedUserCleanupScheduler _cleanupScheduler;
+	private readonly IActorAccessService _actorAccess;
 
-	public UserService(IUserRepository users, IOtpService otp, IUnconfirmedUserCleanupScheduler cleanupScheduler)
+	public UserService(IUserRepository users, IOtpService otp, IUnconfirmedUserCleanupScheduler cleanupScheduler, IActorAccessService actorAccess)
 	{
 		_users = users;
 		_otp = otp;
 		_cleanupScheduler = cleanupScheduler;
+		_actorAccess = actorAccess;
 	}
 
 	public async Task<Guid> RegisterAsync(UserCreateModel model, CancellationToken cancellationToken)
@@ -114,15 +116,51 @@ public sealed class UserService : IUserService
 	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken) =>
 		_users.GetByRegionAndCityAsync(regionName, cityName, cancellationToken);
 
-	public Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken) =>
-		_users.IsAdminAsync(userId, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? cityName, CancellationToken cancellationToken) =>
+		_users.GetByFiltersAsync(role, regionName, cityName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(CancellationToken cancellationToken) =>
-		GetAdminsAsync(start: null, end: null, cancellationToken);
+	public Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken) =>
+		_users.GetRoleAsync(userId, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken) =>
-		_users.GetAdminsAsync(start, end, cancellationToken);
+	public async Task<UserRoleChangeResult> SetCoordinatorRoleAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid targetUserId,
+		bool isCoordinator,
+		CancellationToken cancellationToken)
+	{
+		if(actorUserId == Guid.Empty || targetUserId == Guid.Empty || string.IsNullOrWhiteSpace(actorUserPassword))
+		{
+			return UserRoleChangeResult.Fail(UserRoleChangeError.ValidationFailed);
+		}
+
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!actorAuth.IsSuccess)
+		{
+			return UserRoleChangeResult.Fail(UserRoleChangeError.InvalidCredentials);
+		}
+
+		if(!UserRoleRules.IsAdmin(actorAuth.Actor!.Role))
+		{
+			return UserRoleChangeResult.Fail(UserRoleChangeError.Forbidden);
+		}
+
+		var target = await _users.GetInternalByIdAsync(targetUserId, cancellationToken);
+		if(target is null)
+		{
+			return UserRoleChangeResult.Fail(UserRoleChangeError.UserNotFound);
+		}
+
+		if(UserRoleRules.IsAdmin(target.Role))
+		{
+			return UserRoleChangeResult.Fail(UserRoleChangeError.RoleChangeNotAllowed);
+		}
+
+		var nextRole = isCoordinator ? UserRoles.Coordinator : UserRoles.Activist;
+		var changed = await _users.SetRoleAsync(targetUserId, nextRole, cancellationToken);
+		return changed ? UserRoleChangeResult.Success() : UserRoleChangeResult.Fail(UserRoleChangeError.UserNotFound);
+	}
 
 	private static UserPublicModel ToPublic(UserInternalModel u) =>
-		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionName, u.CityName, u.IsPhoneConfirmed, u.AvatarImageUrl);
+		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionName, u.CityName, u.Role, u.IsPhoneConfirmed, u.AvatarImageUrl);
 }

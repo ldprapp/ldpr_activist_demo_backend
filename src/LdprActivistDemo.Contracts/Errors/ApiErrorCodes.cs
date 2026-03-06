@@ -17,6 +17,7 @@ public static class ApiErrorCodes
 	public const string PhoneAlreadyExists = "phone_already_exists";
 	public const string GenderInvalid = "gender_invalid";
 	public const string CityRegionMismatch = "city_region_mismatch";
+	public const string UserRoleChangeNotAllowed = "user_role_change_not_allowed";
 	public const string PhoneChangeNotAllowed = "phone_change_not_allowed";
 
 	public const string GeoRegionNotFound = "geo_region_not_found";

@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.UserPoints.Models;
 using LdprActivistDemo.Application.Users;
+using LdprActivistDemo.Application.Users.Models;
 
 namespace LdprActivistDemo.Application.UserPoints;
 
@@ -38,7 +39,7 @@ public sealed class UserPointsService : IUserPointsService
 		var actor = actorAuth.Actor!;
 		if(actorUserId != userId)
 		{
-			if(!actor.IsAdmin)
+			if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 			{
 				return UserPointsResult<int>.Fail(UserPointsError.Forbidden);
 			}
@@ -72,7 +73,7 @@ public sealed class UserPointsService : IUserPointsService
 		var actor = actorAuth.Actor!;
 		if(actorUserId != userId)
 		{
-			if(!actor.IsAdmin)
+			if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 			{
 				return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.Forbidden);
 			}
@@ -110,7 +111,7 @@ public sealed class UserPointsService : IUserPointsService
 		}
 
 		var actor = actorAuth.Actor!;
-		if(!actor.IsAdmin)
+		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
 			return UserPointsResult<Guid>.Fail(UserPointsError.Forbidden);
 		}

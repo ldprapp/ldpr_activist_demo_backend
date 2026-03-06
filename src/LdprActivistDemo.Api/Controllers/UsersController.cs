@@ -678,78 +678,94 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
-	[HttpGet("by-region/{regionName}")]
+	[HttpGet("feed")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByRegion(
-		string regionName,
+	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetFeed(
+		[FromQuery] string? role,
+		[FromQuery] string? regionName,
+		[FromQuery] string? cityName,
 		[FromQuery] int? start,
 		[FromQuery] int? end,
 		CancellationToken cancellationToken)
 	{
+		var invalidFilters = TryBuildUsersFeedFilterValidationProblem(role, regionName, cityName);
+		if(invalidFilters is not null)
+		{
+			return invalidFilters;
+		}
+
 		var invalidPagination = TryBuildUsersPaginationValidationProblem(start, end);
 		if(invalidPagination is not null)
 		{
 			return invalidPagination;
 		}
 
-		var users = await _users.GetUsersByRegionAsync(regionName, cancellationToken);
+		UserRoleRules.TryNormalizeOptionalRole(role, out var normalizedRole, out _);
+
+		var users = await _users.GetUsersAsync(normalizedRole, regionName, cityName, cancellationToken);
 		var dtos = users.Select(ToDto).ToList();
 		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
 
-	[HttpGet("by-city/{regionName}/{cityName}")]
-	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByCity(
-		string regionName,
-		string cityName,
-		[FromQuery] int? start,
-		[FromQuery] int? end,
-		CancellationToken cancellationToken)
-	{
-		var invalidPagination = TryBuildUsersPaginationValidationProblem(start, end);
-		if(invalidPagination is not null)
-		{
-			return invalidPagination;
-		}
-
-		var users = await _users.GetUsersByRegionAndCityAsync(regionName, cityName, cancellationToken);
-		var dtos = users.Select(ToDto).ToList();
-		return Ok(ApplyUsersPagination(dtos, start, end));
-	}
-
-	[HttpGet("{id:guid}/is-admin")]
-	[ProducesResponseType(typeof(IsAdminResponse), StatusCodes.Status200OK)]
+	[HttpGet("{id:guid}/role")]
+	[ProducesResponseType(typeof(UserRoleResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<ActionResult<IsAdminResponse>> IsAdmin(Guid id, CancellationToken cancellationToken)
+	public async Task<ActionResult<UserRoleResponse>> GetRole(Guid id, CancellationToken cancellationToken)
 	{
-		var existing = await _users.GetByIdAsync(id, cancellationToken);
-		if(existing is null)
+		var role = await _users.GetRoleAsync(id, cancellationToken);
+		if(role is null)
 		{
 			return this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.");
 		}
 
-		var isAdmin = await _users.IsAdminAsync(id, cancellationToken);
-		return Ok(new IsAdminResponse(isAdmin));
+		return Ok(new UserRoleResponse(role));
 	}
 
-	[HttpGet("admins")]
-	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[HttpPut("{id:guid}/role/coordinator")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetAdmins(
-		[FromQuery] int? start,
-		[FromQuery] int? end,
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> GrantCoordinatorRole(
+		Guid id,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
-		var invalidPagination = TryBuildUsersPaginationValidationProblem(start, end);
-		if(invalidPagination is not null)
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
 		{
-			return invalidPagination;
+			return invalidActor;
 		}
 
-		var admins = await _users.GetAdminsAsync(start, end, cancellationToken);
-		return Ok(admins.Select(ToDto).ToList());
+		var result = await _users.SetCoordinatorRoleAsync(actorUserId, actorUserPassword!, id, isCoordinator: true, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapUserRoleChangeError(result.Error);
+	}
+
+	[HttpDelete("{id:guid}/role/coordinator")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> RevokeCoordinatorRole(
+		Guid id,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var result = await _users.SetCoordinatorRoleAsync(actorUserId, actorUserPassword!, id, isCoordinator: false, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapUserRoleChangeError(result.Error);
 	}
 
 	private static UserDto ToDto(UserPublicModel u) => new(
@@ -762,10 +778,50 @@ public sealed class UsersController : ControllerBase
 			u.BirthDate,
 			u.RegionName,
 			u.CityName,
+			u.Role,
 			u.IsPhoneConfirmed)
 	{
 		AvatarImageUrl = u.AvatarImageUrl,
 	};
+
+	private ActionResult? TryBuildUsersFeedFilterValidationProblem(string? role, string? regionName, string? cityName)
+	{
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(!UserRoleRules.TryNormalizeOptionalRole(role, out _, out var roleError))
+		{
+			errors["role"] = new[] { roleError! };
+		}
+
+		if(regionName is not null && string.IsNullOrWhiteSpace(regionName))
+		{
+			errors["regionName"] = new[] { "RegionName must not be empty." };
+		}
+
+		if(cityName is not null)
+		{
+			var list = new List<string>();
+
+			if(string.IsNullOrWhiteSpace(cityName))
+			{
+				list.Add("CityName must not be empty.");
+			}
+
+			if(string.IsNullOrWhiteSpace(regionName))
+			{
+				list.Add("cityName can be used only together with regionName.");
+			}
+
+			if(list.Count > 0)
+			{
+				errors["cityName"] = list.ToArray();
+			}
+		}
+
+		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail: $"Проверьте параметры role/regionName/cityName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Admin}', cityName допускается только вместе с regionName.");
+	}
+
+
 
 	private ActionResult? TryBuildUsersPaginationValidationProblem(int? start, int? end)
 	{
@@ -839,6 +895,44 @@ public sealed class UsersController : ControllerBase
 			.Take(take)
 			.ToList();
 	}
+
+	private IActionResult MapUserRoleChangeError(UserRoleChangeError error)
+		=> error switch
+		{
+			UserRoleChangeError.ValidationFailed => this.ProblemWithCode(
+				StatusCodes.Status400BadRequest,
+				ApiErrorCodes.ValidationFailed,
+				"Некорректный запрос.",
+				"Проверьте actorUserId, заголовок пароля и id пользователя."),
+
+			UserRoleChangeError.InvalidCredentials => this.ProblemWithCode(
+				StatusCodes.Status401Unauthorized,
+				ApiErrorCodes.InvalidCredentials,
+				"Неверные учётные данные.",
+				$"Проверьте actorUserId и заголовок {ActorPasswordHeader}."),
+
+			UserRoleChangeError.Forbidden => this.ProblemWithCode(
+				StatusCodes.Status403Forbidden,
+				ApiErrorCodes.Forbidden,
+				"Нет доступа.",
+				"Операция доступна только пользователю с ролью admin."),
+
+			UserRoleChangeError.UserNotFound => this.ProblemWithCode(
+				StatusCodes.Status404NotFound,
+				ApiErrorCodes.UserNotFound,
+				"Пользователь не найден."),
+
+			UserRoleChangeError.RoleChangeNotAllowed => this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.UserRoleChangeNotAllowed,
+				"Изменение роли запрещено.",
+				"Нельзя выдавать или забирать роль coordinator у пользователя с ролью admin."),
+
+			_ => this.ProblemWithCode(
+				StatusCodes.Status500InternalServerError,
+				ApiErrorCodes.InternalError,
+				"Внутренняя ошибка."),
+		};
 
 	public sealed class RegisterUserFormRequest
 	{

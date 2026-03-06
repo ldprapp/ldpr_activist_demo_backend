@@ -29,10 +29,9 @@ public interface IUserRepository
 	Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken);
-
-	Task<bool> IsAdminAsync(Guid userId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<Guid>> GetAllAdminIdsAsync(CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetAdminsAsync(int? start, int? end, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetByFiltersAsync(string? role, string? regionName, string? cityName, CancellationToken cancellationToken);
+	Task<bool> SetRoleAsync(Guid userId, string role, CancellationToken cancellationToken);
+	Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken);
 
 	Task<bool> AddPointsAsync(Guid userId, int pointsToAdd, CancellationToken cancellationToken);
 }

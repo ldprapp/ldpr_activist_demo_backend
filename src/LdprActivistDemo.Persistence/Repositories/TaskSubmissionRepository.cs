@@ -63,7 +63,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskSubmitOperationResult.Fail(TaskOperationError.TaskAccessDenied);
 		}
 
-		if(actor.IsAdmin)
+		if(UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
 			var isAuthor = task.AuthorUserId == actorUserId;
 			var isTrustedAdmin = await _db.TaskTrustedAdmins.AsNoTracking()
@@ -366,11 +366,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.BirthDate,
 					RegionName = u.Region.Name,
 					CityName = u.City.Name,
+					u.Role,
 					u.IsPhoneConfirmed,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.IsPhoneConfirmed, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.Role, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
 	}
@@ -403,11 +404,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.BirthDate,
 					RegionName = u.Region.Name,
 					CityName = u.City.Name,
+					u.Role,
 					u.IsPhoneConfirmed,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.IsPhoneConfirmed, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.Role, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
@@ -594,7 +596,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.InvalidCredentials);
 		}
 
-		if(!actor.IsAdmin)
+		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
 			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.Forbidden);
 		}
@@ -677,7 +679,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationResult<TaskSubmissionModel>.Fail(TaskOperationError.InvalidCredentials);
 		}
 
-		if(!actor.IsAdmin)
+		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
 			var ownSubmission = await _db.TaskSubmissions.AsNoTracking()
 				.Include(x => x.PhotoImages)
@@ -785,7 +787,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				: TaskOperationError.None;
 		}
 
-		var isTrustedAdmin = actor.IsAdmin && await _db.TaskTrustedAdmins.AsNoTracking()
+		var isTrustedAdmin = UserRoleRules.HasCoordinatorAccess(actor.Role) && await _db.TaskTrustedAdmins.AsNoTracking()
 			.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
 
 		if(!isTrustedAdmin)

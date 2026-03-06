@@ -10,5 +10,6 @@ public sealed record UserPublicModel(
 	DateOnly BirthDate,
 	string RegionName,
 	string CityName,
+	string Role,
 	bool IsPhoneConfirmed,
 	string? AvatarImageUrl);

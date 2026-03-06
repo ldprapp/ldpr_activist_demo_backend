@@ -11,6 +11,6 @@ public sealed record UserInternalModel(
 	DateOnly BirthDate,
 	string RegionName,
 	string CityName,
-	bool IsAdmin,
+	string Role,
 	bool IsPhoneConfirmed,
 	string? AvatarImageUrl);

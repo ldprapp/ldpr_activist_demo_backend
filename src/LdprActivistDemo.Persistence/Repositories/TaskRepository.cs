@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
+using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Contracts.Tasks;
 using LdprActivistDemo.Persistence.Repositories;
 
@@ -31,9 +32,9 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.InvalidCredentials);
 		}
 
-		if(!actor.IsAdmin)
+		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
-			_logger.LogWarning("CreateTask rejected: actor is not admin. ActorUserId={ActorUserId}.", actorUserId);
+			_logger.LogWarning("CreateTask rejected: actor has no coordinator/admin role. ActorUserId={ActorUserId}.", actorUserId);
 			return TaskOperationResult<Guid>.Fail(TaskOperationError.Forbidden);
 		}
 
@@ -96,13 +97,13 @@ public sealed class TaskRepository : ITaskRepository
 		if(trustedAdminIds.Length > 0)
 		{
 			var existingAdminIds = await _db.Users.AsNoTracking()
-				.Where(u => trustedAdminIds.Contains(u.Id) && u.IsAdmin)
+				.Where(u => trustedAdminIds.Contains(u.Id) && (u.Role == UserRoles.Coordinator || u.Role == UserRoles.Admin))
 				.Select(u => u.Id)
 				.ToListAsync(cancellationToken);
 
 			if(existingAdminIds.Count != trustedAdminIds.Length)
 			{
-				_logger.LogWarning("CreateTask rejected: some TrustedAdminIds not found or not admins. ActorUserId={ActorUserId}.",
+				_logger.LogWarning("CreateTask rejected: some TrustedAdminIds not found or have no coordinator/admin role. ActorUserId={ActorUserId}.",
 					actorUserId);
 				return TaskOperationResult<Guid>.Fail(TaskOperationError.UserNotFound);
 			}
@@ -167,7 +168,7 @@ public sealed class TaskRepository : ITaskRepository
 
 		if(!isAuthor)
 		{
-			var isTrustedAdmin = actor.IsAdmin && await _db.TaskTrustedAdmins.AsNoTracking()
+			var isTrustedAdmin = UserRoleRules.HasCoordinatorAccess(actor.Role) && await _db.TaskTrustedAdmins.AsNoTracking()
 				.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
 
 			if(!isTrustedAdmin)
@@ -177,7 +178,7 @@ public sealed class TaskRepository : ITaskRepository
 					actorUserId,
 					taskId,
 					task.AuthorUserId,
-					actor.IsAdmin);
+					actor.Role);
 				return TaskOperationResult.Fail(TaskOperationError.Forbidden);
 			}
 		}
@@ -270,13 +271,13 @@ public sealed class TaskRepository : ITaskRepository
 		if(trustedAdminIds.Length > 0)
 		{
 			var existingAdminIds = await _db.Users.AsNoTracking()
-				.Where(u => trustedAdminIds.Contains(u.Id) && u.IsAdmin)
+				.Where(u => trustedAdminIds.Contains(u.Id) && (u.Role == UserRoles.Coordinator || u.Role == UserRoles.Admin))
 				.Select(u => u.Id)
 				.ToListAsync(cancellationToken);
 
 			if(existingAdminIds.Count != trustedAdminIds.Length)
 			{
-				_logger.LogWarning("UpdateTask rejected: some TrustedAdminIds not found or not admins. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+				_logger.LogWarning("UpdateTask rejected: some TrustedAdminIds not found or have no coordinator/admin role. ActorUserId={ActorUserId}, TaskId={TaskId}.",
 					actorUserId, taskId);
 				return TaskOperationResult.Fail(TaskOperationError.UserNotFound);
 			}
@@ -420,9 +421,9 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.InvalidCredentials);
 		}
 
-		if(!actor.IsAdmin)
+		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
-			_logger.LogWarning("GetTaskAdmin rejected: actor is not admin. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("GetTaskAdmin rejected: actor has no coordinator/admin role. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.Forbidden);
 		}
 
