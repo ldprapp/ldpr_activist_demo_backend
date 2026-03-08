@@ -136,9 +136,7 @@ public sealed class UserRepository : IUserRepository
 			CityId = geo.CityId,
 			Role = UserRoles.Activist,
 			IsPhoneConfirmed = false,
-			AvatarImageUrl = model.AvatarImageId.HasValue && model.AvatarImageId.Value != Guid.Empty
-				? model.AvatarImageId.Value.ToString("D")
-				: null,
+			AvatarImageUrl = null,
 		};
 
 		_db.Users.Add(entity);
@@ -199,6 +197,38 @@ public sealed class UserRepository : IUserRepository
 
 		u.PasswordHash = _passwordHasher.Hash(newPassword);
 		await _db.SaveChangesAsync(cancellationToken);
+		return true;
+	}
+
+	public async Task<bool> SetAvatarImageAsync(Guid userId, Guid? avatarImageId, CancellationToken cancellationToken)
+	{
+		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
+		if(u is null)
+		{
+			return false;
+		}
+
+		var hadAvatar = ImageGcHelpers.TryExtractImageId(u.AvatarImageUrl, out var previousAvatarId);
+		Guid? nextAvatarId = hadAvatar ? previousAvatarId : (Guid?)null;
+
+		if(avatarImageId.HasValue && avatarImageId.Value != Guid.Empty)
+		{
+			u.AvatarImageUrl = avatarImageId.Value.ToString("D");
+			nextAvatarId = avatarImageId.Value;
+		}
+		else
+		{
+			u.AvatarImageUrl = null;
+			nextAvatarId = null;
+		}
+
+		await _db.SaveChangesAsync(cancellationToken);
+
+		if(hadAvatar && nextAvatarId != previousAvatarId)
+		{
+			await ImageGcHelpers.DeleteOrphanManyAsync(_db, new[] { previousAvatarId }, cancellationToken);
+		}
+
 		return true;
 	}
 

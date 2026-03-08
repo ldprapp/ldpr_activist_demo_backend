@@ -33,4 +33,6 @@ public sealed class User
 	public bool IsPhoneConfirmed { get; set; }
 
 	public string? AvatarImageUrl { get; set; }
+
+	public List<ImageEntity> OwnedImages { get; set; } = new();
 }

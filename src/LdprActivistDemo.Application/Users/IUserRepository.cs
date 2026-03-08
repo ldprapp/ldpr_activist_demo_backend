@@ -24,6 +24,7 @@ public interface IUserRepository
 	Task<bool> SetPhoneConfirmedAsync(string phoneNumber, bool isConfirmed, CancellationToken cancellationToken);
 	Task<bool> SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken);
 	Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken);
+	Task<bool> SetAvatarImageAsync(Guid userId, Guid? avatarImageId, CancellationToken cancellationToken);
 	Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, CancellationToken cancellationToken);
 
 	Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken);

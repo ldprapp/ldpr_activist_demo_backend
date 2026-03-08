@@ -41,6 +41,20 @@ public sealed class UsersController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
 	public async Task<ActionResult<UserIdResponse>> Register([FromForm] RegisterUserFormRequest request, CancellationToken cancellationToken)
 	{
+		if(request.AvatarImage is not null)
+		{
+			var avatarValidationError = UploadedImageReader.ValidateImage(request.AvatarImage);
+			if(avatarValidationError is not null)
+			{
+				return this.ValidationProblemWithCode(
+					ApiErrorCodes.ValidationFailed,
+					new Dictionary<string, string[]>
+					{
+						["avatarImage"] = new[] { avatarValidationError },
+					});
+			}
+		}
+
 		var errors = ValidateRegister(request);
 		if(errors.Count > 0)
 		{
@@ -49,24 +63,6 @@ public sealed class UsersController : ControllerBase
 
 		try
 		{
-			Guid? avatarImageId = null;
-			if(request.AvatarImage is not null)
-			{
-				var err = UploadedImageReader.ValidateImage(request.AvatarImage);
-				if(err is not null)
-				{
-					return this.ValidationProblemWithCode(
-						ApiErrorCodes.ValidationFailed,
-						new Dictionary<string, string[]>
-						{
-							["avatarImage"] = new[] { err },
-						});
-				}
-
-				var img = await UploadedImageReader.ReadAsync(request.AvatarImage, cancellationToken);
-				avatarImageId = await _images.CreateAsync(img, cancellationToken);
-			}
-
 			var userId = await _users.RegisterAsync(
 				new UserCreateModel(
 					LastName: request.LastName,
@@ -78,8 +74,15 @@ public sealed class UsersController : ControllerBase
 					BirthDate: request.BirthDate,
 					RegionName: request.RegionName,
 					CityName: request.CityName,
-					AvatarImageId: avatarImageId),
+					AvatarImageId: null),
 				cancellationToken);
+
+			if(request.AvatarImage is not null)
+			{
+				var img = await UploadedImageReader.ReadAsync(request.AvatarImage, cancellationToken);
+				var avatarImageId = await _images.CreateAsync(userId, img, cancellationToken);
+				await _users.SetAvatarImageAsync(userId, avatarImageId, cancellationToken);
+			}
 
 			return Created($"/api/v1/users/{userId}", new UserIdResponse(userId));
 		}
@@ -566,7 +569,7 @@ public sealed class UsersController : ControllerBase
 				}
 
 				var img = await UploadedImageReader.ReadAsync(request.AvatarImage, cancellationToken);
-				avatarImageId = await _images.CreateAsync(img, cancellationToken);
+				avatarImageId = await _images.CreateAsync(actorUserId, img, cancellationToken);
 			}
 
 			var ok = await _users.UpdateAsync(

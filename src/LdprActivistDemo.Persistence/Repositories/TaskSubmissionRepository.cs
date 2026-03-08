@@ -78,6 +78,10 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			}
 		}
 
+		var isAutoVerification = string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal);
+		var isImmediateAutoApproval =
+			isAutoVerification && string.Equals(task.AutoVerificationActionType, TaskAutoVerificationActionType.Auto, StringComparison.Ordinal);
+
 		if(!isReusable)
 		{
 			var existing = await _db.TaskSubmissions
@@ -92,17 +96,35 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			}
 		}
 
+		var decidedAt = isImmediateAutoApproval ? model.SubmittedAt : (DateTimeOffset?)null;
+
 		var submission = new TaskSubmission
 		{
 			Id = Guid.NewGuid(),
 			TaskId = taskId,
 			UserId = userId,
 			SubmittedAt = model.SubmittedAt,
-			DecisionStatus = TaskSubmissionDecisionStatus.InProgress,
+			DecisionStatus = isImmediateAutoApproval
+				? TaskSubmissionDecisionStatus.Approve
+				: TaskSubmissionDecisionStatus.InProgress,
+			DecidedByAdminId = null,
+			DecidedAt = decidedAt,
 			ProofText = null,
 		};
 
 		_db.TaskSubmissions.Add(submission);
+
+		if(isImmediateAutoApproval && task.RewardPoints != 0)
+		{
+			_db.UserPointsTransactions.Add(new UserPointsTransaction
+			{
+				Id = Guid.NewGuid(),
+				UserId = userId,
+				Amount = task.RewardPoints,
+				TransactionAt = decidedAt!.Value,
+				Comment = $"Points for approval of submission {submission.Id:D}.",
+			});
+		}
 
 		await _db.SaveChangesAsync(cancellationToken);
 		return TaskSubmitOperationResult.Created();
@@ -147,7 +169,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		if(newPhotoIds.Length > 0)
 		{
 			var count = await _db.Images.AsNoTracking()
-				.Where(i => newPhotoIds.Contains(i.Id))
+				.Where(i => newPhotoIds.Contains(i.Id) && i.OwnerUserId == actorUserId)
 				.CountAsync(cancellationToken);
 
 			if(count != newPhotoIds.Length)
@@ -288,7 +310,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			if(newPhotoIds.Length > 0)
 			{
 				var count = await _db.Images.AsNoTracking()
-					.Where(i => newPhotoIds.Contains(i.Id))
+					.Where(i => newPhotoIds.Contains(i.Id) && i.OwnerUserId == actorUserId)
 					.CountAsync(cancellationToken);
 
 				if(count != newPhotoIds.Length)

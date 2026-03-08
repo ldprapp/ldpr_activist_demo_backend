@@ -109,6 +109,19 @@ public sealed class TaskRepository : ITaskRepository
 			}
 		}
 
+		if(model.CoverImageId.HasValue && model.CoverImageId.Value != Guid.Empty)
+		{
+			var hasOwnedCoverImage = await _db.Images.AsNoTracking()
+				.AnyAsync(
+					i => i.Id == model.CoverImageId.Value && i.OwnerUserId == actorUserId,
+					cancellationToken);
+
+			if(!hasOwnedCoverImage)
+			{
+				return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+			}
+		}
+
 		var entity = new TaskEntity
 		{
 			Id = Guid.NewGuid(),
@@ -283,6 +296,19 @@ public sealed class TaskRepository : ITaskRepository
 			}
 		}
 
+		if(model.CoverImageId.HasValue && model.CoverImageId.Value != Guid.Empty)
+		{
+			var hasOwnedCoverImage = await _db.Images.AsNoTracking()
+				.AnyAsync(
+					i => i.Id == model.CoverImageId.Value && i.OwnerUserId == actorUserId,
+					cancellationToken);
+
+			if(!hasOwnedCoverImage)
+			{
+				return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+			}
+		}
+
 		var previousCoverId = task.CoverImageId;
 		var coverChanged = false;
 
@@ -355,9 +381,9 @@ public sealed class TaskRepository : ITaskRepository
 
 	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var actorExists = await _db.Users.AsNoTracking()
-			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
-		if(!actorExists)
+		var actor = await _db.Users.AsNoTracking()
+			.FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
+		if(actor is null)
 		{
 			_logger.LogWarning("OpenTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
@@ -369,9 +395,13 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		if(task.AuthorUserId != actorUserId)
+		var isAuthor = task.AuthorUserId == actorUserId;
+		var isAdmin = UserRoleRules.IsAdmin(actor.Role);
+
+		if(!isAuthor && !isAdmin)
 		{
-			_logger.LogWarning("OpenTask rejected: actor is not author. ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}.", actorUserId, taskId, task.AuthorUserId);
+			_logger.LogWarning("OpenTask rejected: actor has no rights. ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}, ActorRole={ActorRole}.",
+				actorUserId, taskId, task.AuthorUserId, actor.Role);
 			return TaskOperationResult.Fail(TaskOperationError.Forbidden);
 		}
 
@@ -387,9 +417,9 @@ public sealed class TaskRepository : ITaskRepository
 
 	public async Task<TaskOperationResult> CloseAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
-		var actorExists = await _db.Users.AsNoTracking()
-			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
-		if(!actorExists)
+		var actor = await _db.Users.AsNoTracking()
+			.FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
+		if(actor is null)
 		{
 			_logger.LogWarning("CloseTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
@@ -401,9 +431,13 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		if(task.AuthorUserId != actorUserId)
+		var isAuthor = task.AuthorUserId == actorUserId;
+		var isAdmin = UserRoleRules.IsAdmin(actor.Role);
+
+		if(!isAuthor && !isAdmin)
 		{
-			_logger.LogWarning("CloseTask rejected: actor is not author. ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}.", actorUserId, taskId, task.AuthorUserId);
+			_logger.LogWarning("CloseTask rejected: actor has no rights. ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}, ActorRole={ActorRole}.",
+				actorUserId, taskId, task.AuthorUserId, actor.Role);
 			return TaskOperationResult.Fail(TaskOperationError.Forbidden);
 		}
 
@@ -786,6 +820,18 @@ public sealed class TaskRepository : ITaskRepository
 		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
 		{
 			normalized = TaskAutoVerificationActionType.InviteFriend;
+			return true;
+		}
+
+		if(string.Equals(token, TaskAutoVerificationActionType.FirstLogin, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.FirstLogin;
+			return true;
+		}
+
+		if(string.Equals(token, TaskAutoVerificationActionType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.Auto;
 			return true;
 		}
 

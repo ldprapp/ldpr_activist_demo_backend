@@ -28,12 +28,36 @@ public sealed class ImageRepository : IImageRepository
 			.FirstOrDefaultAsync(cancellationToken);
 	}
 
+	public async Task<Guid?> GetOwnerUserIdAsync(Guid id, CancellationToken cancellationToken = default)
+	{
+		if(id == Guid.Empty)
+		{
+			return null;
+		}
+
+		return await _db.Images
+			.AsNoTracking()
+			.Where(x => x.Id == id)
+			.Select(x => (Guid?)x.OwnerUserId)
+			.FirstOrDefaultAsync(cancellationToken);
+	}
+
 	public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
 	{
 		if(id == Guid.Empty)
 		{
 			return false;
 		}
+
+		var idString = id.ToString("D");
+
+		await _db.Users
+			.Where(u =>
+				u.AvatarImageUrl != null
+				&& (u.AvatarImageUrl == idString || EF.Functions.Like(u.AvatarImageUrl, $"%{idString}%")))
+			.ExecuteUpdateAsync(
+				setters => setters.SetProperty(u => u.AvatarImageUrl, (string?)null),
+				cancellationToken);
 
 		var affected = await _db.Images
 			.Where(x => x.Id == id)
@@ -42,8 +66,13 @@ public sealed class ImageRepository : IImageRepository
 		return affected > 0;
 	}
 
-	public async Task<Guid> CreateAsync(ImageCreateModel model, CancellationToken cancellationToken = default)
+	public async Task<Guid> CreateAsync(Guid ownerUserId, ImageCreateModel model, CancellationToken cancellationToken = default)
 	{
+		if(ownerUserId == Guid.Empty)
+		{
+			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
+		}
+
 		if(model is null)
 		{
 			throw new ArgumentNullException(nameof(model));
@@ -59,6 +88,7 @@ public sealed class ImageRepository : IImageRepository
 		_db.Images.Add(new ImageEntity
 		{
 			Id = id,
+			OwnerUserId = ownerUserId,
 			ContentType = string.IsNullOrWhiteSpace(model.ContentType)
 				? "application/octet-stream"
 				: model.ContentType.Trim(),
@@ -71,9 +101,15 @@ public sealed class ImageRepository : IImageRepository
 	}
 
 	public async Task<IReadOnlyList<Guid>> CreateManyAsync(
-		IReadOnlyList<ImageCreateModel> models,
-		CancellationToken cancellationToken = default)
+	   Guid ownerUserId,
+	   IReadOnlyList<ImageCreateModel> models,
+	   CancellationToken cancellationToken = default)
 	{
+		if(ownerUserId == Guid.Empty)
+		{
+			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
+		}
+
 		if(models is null)
 		{
 			throw new ArgumentNullException(nameof(models));
@@ -105,6 +141,7 @@ public sealed class ImageRepository : IImageRepository
 			_db.Images.Add(new ImageEntity
 			{
 				Id = id,
+				OwnerUserId = ownerUserId,
 				ContentType = string.IsNullOrWhiteSpace(m.ContentType)
 					? "application/octet-stream"
 					: m.ContentType.Trim(),

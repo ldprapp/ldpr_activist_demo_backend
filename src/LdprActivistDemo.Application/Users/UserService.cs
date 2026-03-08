@@ -78,6 +78,9 @@ public sealed class UserService : IUserService
 	public Task<bool> ChangePasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken) =>
 		_users.SetPasswordAsync(userId, newPassword, cancellationToken);
 
+	public Task<bool> SetAvatarImageAsync(Guid userId, Guid? avatarImageId, CancellationToken cancellationToken) =>
+		_users.SetAvatarImageAsync(userId, avatarImageId, cancellationToken);
+
 	public Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken) =>
 		_users.UpdateAsync(model, cancellationToken);
 

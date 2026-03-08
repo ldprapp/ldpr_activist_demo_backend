@@ -5,19 +5,8 @@ namespace LdprActivistDemo.Application.Images;
 public interface IImageRepository
 {
 	Task<ImagePayload?> GetAsync(Guid id, CancellationToken cancellationToken = default);
-
-	/// <summary>
-	/// Удаляет картинку.
-	/// </summary>
+	Task<Guid?> GetOwnerUserIdAsync(Guid id, CancellationToken cancellationToken = default);
 	Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
-
-	/// <summary>
-	/// Создаёт картинку и возвращает её идентификатор.
-	/// </summary>
-	Task<Guid> CreateAsync(ImageCreateModel model, CancellationToken cancellationToken = default);
-
-	/// <summary>
-	/// Создаёт несколько картинок и возвращает их идентификаторы в том же порядке.
-	/// </summary>
-	Task<IReadOnlyList<Guid>> CreateManyAsync(IReadOnlyList<ImageCreateModel> models, CancellationToken cancellationToken = default);
+	Task<Guid> CreateAsync(Guid ownerUserId, ImageCreateModel model, CancellationToken cancellationToken = default);
+	Task<IReadOnlyList<Guid>> CreateManyAsync(Guid ownerUserId, IReadOnlyList<ImageCreateModel> models, CancellationToken cancellationToken = default);
 }

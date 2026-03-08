@@ -30,12 +30,19 @@ public sealed class AppDbContext : DbContext
 		base.OnModelCreating(modelBuilder);
 
 		modelBuilder.Entity<ImageEntity>(b =>
-		{
-			b.ToTable("images");
-			b.HasKey(x => x.Id);
-			b.Property(x => x.ContentType).IsRequired();
-			b.Property(x => x.Data).IsRequired();
-		});
+ 		{
+ 			b.ToTable("images");
+ 			b.HasKey(x => x.Id);
+			 b.Property(x => x.OwnerUserId).IsRequired();
+			 b.Property(x => x.ContentType).IsRequired();
+			 b.Property(x => x.Data).IsRequired();
+			 b.HasIndex(x => x.OwnerUserId);
+
+			 b.HasOne(x => x.OwnerUser)
+				 .WithMany(x => x.OwnedImages)
+				 .HasForeignKey(x => x.OwnerUserId)
+				 .OnDelete(DeleteBehavior.Cascade);
+ 		});
 
 		modelBuilder.Entity<Region>(b =>
 		{
@@ -84,6 +91,7 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.PasswordHash).IsRequired();
 
 			b.Property(x => x.AvatarImageUrl);
+			b.Navigation(x => x.OwnedImages);
 
 			b.HasOne(x => x.Region)
 				.WithMany()
@@ -136,7 +144,7 @@ public sealed class AppDbContext : DbContext
 
 				t.HasCheckConstraint(
 					"ck_tasks_auto_verification_action_type_allowed",
-					$"(\"VerificationType\" = '{TaskVerificationType.Manual}' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = '{TaskVerificationType.Auto}' AND \"AutoVerificationActionType\" IN ('{TaskAutoVerificationActionType.InviteFriend}'))");
+					$"(\"VerificationType\" = '{TaskVerificationType.Manual}' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = '{TaskVerificationType.Auto}' AND \"AutoVerificationActionType\" IN ('{TaskAutoVerificationActionType.InviteFriend}','{TaskAutoVerificationActionType.FirstLogin}','{TaskAutoVerificationActionType.Auto}'))");
 			});
 			b.HasKey(x => x.Id);
 

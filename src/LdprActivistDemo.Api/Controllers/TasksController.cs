@@ -208,7 +208,13 @@ public sealed class TasksController : ControllerBase
 					["autoVerificationActionType"] = new[] { autoVerificationActionTypeError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр autoVerificationActionType обязателен для verificationType='auto' и допускает только 'invite_friend'.");
+				detail: "Параметр autoVerificationActionType обязателен для verificationType='auto' и допускает только 'invite_friend', 'first_login' или 'auto'.");
+		}
+
+		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!auth.IsSuccess)
+		{
+			return MapTaskError(auth.Error);
 		}
 
 		Guid? coverImageId = null;
@@ -226,7 +232,7 @@ public sealed class TasksController : ControllerBase
 			}
 
 			var img = await UploadedImageReader.ReadAsync(request.CoverImage, cancellationToken);
-			coverImageId = await _images.CreateAsync(img, cancellationToken);
+			coverImageId = await _images.CreateAsync(actorUserId, img, cancellationToken);
 		}
 
 		var publishedAt = DateTimeOffset.UtcNow;
@@ -331,7 +337,13 @@ public sealed class TasksController : ControllerBase
 					["autoVerificationActionType"] = new[] { autoVerificationActionTypeError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр autoVerificationActionType допускает только поддерживаемые значения. Для verificationType='manual' игнорируется и сохраняется NULL.");
+				detail: "Параметр autoVerificationActionType допускает только поддерживаемые значения ('invite_friend', 'first_login', 'auto'). Для verificationType='manual' игнорируется и сохраняется NULL.");
+		}
+
+		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!auth.IsSuccess)
+		{
+			return MapTaskError(auth.Error);
 		}
 
 		Guid? coverImageId = null;
@@ -349,7 +361,7 @@ public sealed class TasksController : ControllerBase
 			}
 
 			var img = await UploadedImageReader.ReadAsync(request.CoverImage, cancellationToken);
-			coverImageId = await _images.CreateAsync(img, cancellationToken);
+			coverImageId = await _images.CreateAsync(actorUserId, img, cancellationToken);
 		}
 
 		var publishedAt = DateTimeOffset.UtcNow;
@@ -683,6 +695,12 @@ public sealed class TasksController : ControllerBase
 		var invalid = TryBuildValidationProblemIfInvalidModel();
 		if(invalid is not null) return invalid;
 
+		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!auth.IsSuccess)
+		{
+			return MapTaskError(auth.Error);
+		}
+
 		IReadOnlyList<Guid>? photoImageIds = null;
 
 		if(request.Photos is { Count: > 0 })
@@ -706,7 +724,7 @@ public sealed class TasksController : ControllerBase
 				models.Add(await UploadedImageReader.ReadAsync(f, cancellationToken));
 			}
 
-			photoImageIds = await _images.CreateManyAsync(models, cancellationToken);
+			photoImageIds = await _images.CreateManyAsync(actorUserId, models, cancellationToken);
 		}
 
 		var model = new TaskSubmissionCreateModel(
@@ -738,6 +756,12 @@ public sealed class TasksController : ControllerBase
 		var invalid = TryBuildValidationProblemIfInvalidModel();
 		if(invalid is not null) return invalid;
 
+		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!auth.IsSuccess)
+		{
+			return MapTaskError(auth.Error);
+		}
+
 		IReadOnlyList<Guid>? photoImageIds = null;
 
 		if(request.Photos is { Count: > 0 })
@@ -761,7 +785,7 @@ public sealed class TasksController : ControllerBase
 				models.Add(await UploadedImageReader.ReadAsync(f, cancellationToken));
 			}
 
-			photoImageIds = await _images.CreateManyAsync(models, cancellationToken);
+			photoImageIds = await _images.CreateManyAsync(actorUserId, models, cancellationToken);
 		}
 
 		var model = new TaskSubmissionCreateModel(
@@ -1352,7 +1376,19 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
-		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}'.";
+		if(string.Equals(token, TaskAutoVerificationActionType.FirstLogin, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.FirstLogin;
+			return true;
+		}
+
+		if(string.Equals(token, TaskAutoVerificationActionType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.Auto;
+			return true;
+		}
+
+		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}', '{TaskAutoVerificationActionType.FirstLogin}' or '{TaskAutoVerificationActionType.Auto}'.";
 		return false;
 	}
 
@@ -1392,7 +1428,19 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
-		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}'.";
+		if(string.Equals(token, TaskAutoVerificationActionType.FirstLogin, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.FirstLogin;
+			return true;
+		}
+
+		if(string.Equals(token, TaskAutoVerificationActionType.Auto, StringComparison.Ordinal))
+		{
+			normalized = TaskAutoVerificationActionType.Auto;
+			return true;
+		}
+
+		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}', '{TaskAutoVerificationActionType.FirstLogin}' or '{TaskAutoVerificationActionType.Auto}'.";
 		return false;
 	}
 

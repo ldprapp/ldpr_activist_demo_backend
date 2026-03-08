@@ -12,6 +12,7 @@ public interface IUserService
 	Task<bool> ChangePasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken);
 	Task<bool> UpdateAsync(UserUpdateModel model, CancellationToken cancellationToken);
 	Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, string otpCode, CancellationToken cancellationToken);
+	Task<bool> SetAvatarImageAsync(Guid userId, Guid? avatarImageId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(string regionName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(string cityName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken);
