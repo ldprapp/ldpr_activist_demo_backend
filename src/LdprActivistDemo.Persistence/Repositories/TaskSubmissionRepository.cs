@@ -665,21 +665,25 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 	}
 
 	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetUserFeedAsync(
-		Guid actorUserId,
+		Guid? taskId,
+		Guid userId,
 		string? decisionStatus,
 		CancellationToken cancellationToken)
 	{
-		var actorExists = await _db.Users.AsNoTracking()
-			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
-		if(!actorExists)
+		if(taskId.HasValue)
 		{
-			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.InvalidCredentials);
+			var taskExists = await _db.Tasks.AsNoTracking()
+				.AnyAsync(x => x.Id == taskId.Value, cancellationToken);
+			if(!taskExists)
+			{
+				return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.TaskNotFound);
+			}
 		}
 
 		IQueryable<TaskSubmission> query = _db.TaskSubmissions.AsNoTracking()
-			.Where(s => s.UserId == actorUserId)
+			.Where(s => s.UserId == userId)
 			.Include(s => s.PhotoImages);
-
+		if(taskId.HasValue) query = query.Where(s => s.TaskId == taskId.Value);
 		if(!string.IsNullOrWhiteSpace(decisionStatus))
 		{
 			query = ApplyDecisionStatusFilter(query, decisionStatus!);

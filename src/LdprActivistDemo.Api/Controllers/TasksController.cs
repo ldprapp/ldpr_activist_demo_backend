@@ -675,7 +675,7 @@ public sealed class TasksController : ControllerBase
 		return StatusCode(StatusCodes.Status201Created);
 	}
 
-	[HttpPost("submissions/submit/{submitId:guid}/for-review")]
+	[HttpPost("submit/{submitId:guid}/for-review")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -736,7 +736,7 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpPut("submissions/submit/{submitId:guid}")]
+	[HttpPut("submit/{submitId:guid}")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -872,14 +872,17 @@ public sealed class TasksController : ControllerBase
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	public async Task<IActionResult> GetSubmissionUserFeedAsync(
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromQuery] string? status = null,
-		[FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.None,
-		[FromQuery] int? start = null,
-		[FromQuery] int? end = null,
-		CancellationToken cancellationToken = default)
+		 [FromQuery] Guid actorUserId,
+		 [FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		 [FromQuery] Guid? taskId,
+		 [FromQuery] Guid userId,
+		 [FromQuery] string? status = null,
+		 [FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.None,
+		 [FromQuery] int? start = null,
+		 [FromQuery] int? end = null,
+		 CancellationToken cancellationToken = default)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
 		if(invalidActor is not null)
@@ -891,6 +894,18 @@ public sealed class TasksController : ControllerBase
 		if(invalid is not null)
 		{
 			return invalid;
+		}
+
+		var invalidFilters = TryBuildSubmissionFeedFilterValidationProblem(taskId, userId);
+		if(invalidFilters is not null)
+		{
+			return invalidFilters;
+		}
+
+		var invalidTargetUser = this.TryBuildActorUserMatchValidationProblem(actorUserId, userId, nameof(userId));
+		if(invalidTargetUser is not null)
+		{
+			return invalidTargetUser;
 		}
 
 		if(!TryNormalizeSubmissionDecisionStatusFilter(status, out var normalizedStatus, out var statusError))
@@ -914,6 +929,8 @@ public sealed class TasksController : ControllerBase
 		var result = await _tasks.GetSubmissionUserFeedAsync(
 			actorUserId,
 			actorUserPassword!,
+			taskId,
+			userId,
 			normalizedStatus,
 			cancellationToken);
 

@@ -192,11 +192,27 @@ public sealed class TaskService : ITaskService
 			: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(Guid actorUserId, string actorUserPassword, string? decisionStatus, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid? taskId,
+		Guid userId,
+		string? decisionStatus,
+		CancellationToken cancellationToken)
 	{
+		if(userId == Guid.Empty || actorUserId != userId)
+		{
+			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		if(taskId.HasValue && taskId.Value == Guid.Empty)
+		{
+			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.ValidationFailed);
+		}
+
 		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
 		return authError is null
-			? await _submissions.GetUserFeedAsync(actorUserId, decisionStatus, cancellationToken)
+			? await _submissions.GetUserFeedAsync(taskId, userId, decisionStatus, cancellationToken)
 			: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
 	}
 
