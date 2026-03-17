@@ -37,6 +37,8 @@ public static class ApiErrorCodes
 	public const string TaskAccessDenied = "task_access_denied";
 
 	public const string ImageNotFound = "image_not_found";
+	public const string ImageInUse = "image_in_use";
+	public const string SystemImageNotFound = "system_image_not_found";
 
 	public const string UserPointsInsufficientBalance = "user_points_insufficient_balance";
 

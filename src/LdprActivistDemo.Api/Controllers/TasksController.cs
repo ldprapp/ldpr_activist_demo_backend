@@ -248,7 +248,7 @@ public sealed class TasksController : ControllerBase
 			request.DeadlineAt,
 			request.RegionName,
 			request.CityName,
-			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
+			request.TrustedCoordinatorIds?.ToArray() ?? Array.Empty<Guid>(),
 			verificationType,
 			reuseType,
 			autoVerificationActionType);
@@ -377,7 +377,7 @@ public sealed class TasksController : ControllerBase
 			request.DeadlineAt,
 			request.RegionName,
 			request.CityName,
-			request.TrustedAdminIds?.ToArray() ?? Array.Empty<Guid>(),
+			request.TrustedCoordinatorIds?.ToArray() ?? Array.Empty<Guid>(),
 			verificationType,
 			reuseType,
 			autoVerificationActionType);
@@ -466,7 +466,7 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
-	[HttpGet("feed/admin")]
+	[HttpGet("feed/coordinator")]
 	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -530,7 +530,7 @@ public sealed class TasksController : ControllerBase
 
 		if(onlyMine)
 		{
-			tasks = await _tasks.GetByAdminAsync(actorUserId, cancellationToken);
+			tasks = await _tasks.GetByCoordinatorAsync(actorUserId, cancellationToken);
 		}
 		else if(!string.IsNullOrWhiteSpace(regionName))
 		{
@@ -797,7 +797,7 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpGet("submit/feed/admin")]
+	[HttpGet("submit/feed/coordinator")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -850,7 +850,7 @@ public sealed class TasksController : ControllerBase
 			return invalidPagination;
 		}
 
-		var result = await _tasks.GetSubmissionAdminFeedAsync(
+		var result = await _tasks.GetSubmissionCoordinatorFeedAsync(
 			actorUserId,
 			actorUserPassword!,
 			taskId,
@@ -1032,7 +1032,7 @@ public sealed class TasksController : ControllerBase
 		public DateTimeOffset? DeadlineAt { get; set; }
 		public string RegionName { get; set; } = string.Empty;
 		public string? CityName { get; set; }
-		public List<Guid>? TrustedAdminIds { get; set; }
+		public List<Guid>? TrustedCoordinatorIds { get; set; }
 	}
 
 	public sealed class UpdateTaskFormRequest
@@ -1051,7 +1051,7 @@ public sealed class TasksController : ControllerBase
 		public DateTimeOffset? DeadlineAt { get; set; }
 		public string RegionName { get; set; } = string.Empty;
 		public string? CityName { get; set; }
-		public List<Guid>? TrustedAdminIds { get; set; }
+		public List<Guid>? TrustedCoordinatorIds { get; set; }
 	}
 
 	public sealed class SubmitTaskFormRequest
@@ -1577,7 +1577,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя изменять подтверждённую заявку."),
 			TaskOperationError.SubmissionAlreadyExists => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskSubmissionExists, "Заявка уже существует.", "Повторная отправка запрещена."),
 			TaskOperationError.SubmissionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskSubmissionNotFound, "Заявка не найдена."),
-			TaskOperationError.UserNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.", "Пользователь не существует или один из TrustedAdminIds не имеет роли coordinator/admin."),
+			TaskOperationError.UserNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.UserNotFound, "Пользователь не найден.", "Пользователь не существует или один из TrustedCoordinatorIds не имеет роли coordinator/admin."),
 			_ => this.ProblemWithCode(StatusCodes.Status500InternalServerError, ApiErrorCodes.InternalError, "Внутренняя ошибка."),
 		};
 
@@ -1596,7 +1596,7 @@ public sealed class TasksController : ControllerBase
 			NormalizeTaskStatusForContract(t),
 			t.RegionName,
 			t.CityName,
-			t.TrustedAdminIds,
+			t.TrustedCoordinatorIds,
 			t.VerificationType,
 			t.ReuseType,
 			t.AutoVerificationActionType);
@@ -1608,7 +1608,7 @@ public sealed class TasksController : ControllerBase
 			s.UserId,
 			s.SubmittedAt,
 			s.DecisionStatus,
-			s.DecidedByAdminId,
+			s.DecidedByCoordinatorId,
 			s.DecidedAt,
 			s.PhotoImageIds,
 			s.ProofText);

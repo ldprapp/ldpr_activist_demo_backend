@@ -10,11 +10,11 @@ public sealed record TaskModel(
 	Guid? CoverImageId,
 	string? ExecutionLocation,
 	DateTimeOffset PublishedAt,
-	DateTimeOffset DeadlineAt,
+	DateTimeOffset? DeadlineAt,
 	string Status,
 	string RegionName,
 	string? CityName,
-	IReadOnlyList<Guid> TrustedAdminIds,
+	IReadOnlyList<Guid> TrustedCoordinatorIds,
 	string VerificationType,
 	string ReuseType,
 	string? AutoVerificationActionType);

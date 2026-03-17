@@ -12,4 +12,10 @@ public sealed class UserPointsTransaction
 	public DateTimeOffset TransactionAt { get; set; }
 
 	public string Comment { get; set; } = string.Empty;
+
+	public Guid? CoordinatorUserId { get; set; }
+	public User? CoordinatorUser { get; set; }
+
+	public Guid? TaskId { get; set; }
+	public TaskEntity? Task { get; set; }
 }

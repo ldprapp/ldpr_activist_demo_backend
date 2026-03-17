@@ -93,6 +93,14 @@ public static class ImageGcHelpers
 			return true;
 		}
 
+		var usedBySystemImages = await db.SystemImages
+			.AsNoTracking()
+			.AnyAsync(x => x.ImageId == imageId, cancellationToken);
+		if(usedBySystemImages)
+		{
+			return true;
+		}
+
 		var idString = imageId.ToString("D");
 		var usedByUsers = await db.Users
 			.AsNoTracking()

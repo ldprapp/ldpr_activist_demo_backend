@@ -7,6 +7,7 @@ public enum ImageDeleteError
 	InvalidCredentials = 2,
 	Forbidden = 3,
 	ImageNotFound = 4,
+	InUse = 5,
 }
 
 public readonly record struct ImageDeleteResult(ImageDeleteError Error)

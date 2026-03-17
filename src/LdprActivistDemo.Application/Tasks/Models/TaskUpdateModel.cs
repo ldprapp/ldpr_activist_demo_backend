@@ -11,7 +11,7 @@ public sealed record TaskUpdateModel(
 	DateTimeOffset? DeadlineAt,
 	string RegionName,
 	string? CityName,
-	IReadOnlyList<Guid> TrustedAdminIds,
+	IReadOnlyList<Guid> TrustedCoordinatorIds,
 	string? VerificationType,
 	string? ReuseType,
 	string? AutoVerificationActionType);

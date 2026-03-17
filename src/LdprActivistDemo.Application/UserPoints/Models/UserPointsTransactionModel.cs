@@ -5,4 +5,6 @@ public sealed record UserPointsTransactionModel(
 	Guid UserId,
 	int Amount,
 	DateTimeOffset TransactionAt,
-	string Comment);
+	string Comment,
+	Guid? CoordinatorUserId,
+	Guid? TaskId);

@@ -22,5 +22,7 @@ public interface IUserPointsService
 		Guid userId,
 		int amount,
 		string comment,
+		Guid? coordinatorUserId,
+		Guid? taskId,
 		CancellationToken cancellationToken);
 }

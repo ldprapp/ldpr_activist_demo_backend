@@ -4,4 +4,6 @@ public sealed record UserPointsTransactionDto(
 	Guid Id,
 	int Amount,
 	DateTimeOffset TransactionAt,
-	string Comment);
+	string Comment,
+	Guid? CoordinatorUserId,
+	Guid? TaskId);

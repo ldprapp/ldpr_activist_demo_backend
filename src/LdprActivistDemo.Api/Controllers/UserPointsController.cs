@@ -112,6 +112,7 @@ public sealed class UserPointsController : ControllerBase
 	public async Task<IActionResult> CreateTransactionAsync(
 		[FromRoute] Guid userId,
 		[FromQuery] Guid actorUserId,
+		[FromQuery] Guid coordinatorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromBody] CreateUserPointsTransactionRequest request,
 		CancellationToken cancellationToken)
@@ -147,6 +148,15 @@ public sealed class UserPointsController : ControllerBase
 		var comment = (request.Comment ?? string.Empty).Trim();
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
+		if(coordinatorUserId == Guid.Empty)
+		{
+			errors["coordinatorUserId"] = new[] { "CoordinatorUserId must be non-empty GUID." };
+		}
+		else if(coordinatorUserId != actorUserId)
+		{
+			errors["coordinatorUserId"] = new[] { "CoordinatorUserId must be equal to actorUserId." };
+		}
+
 		if(request.Amount == 0)
 		{
 			errors["amount"] = new[] { "Amount must be non-zero." };
@@ -163,7 +173,7 @@ public sealed class UserPointsController : ControllerBase
 				ApiErrorCodes.ValidationFailed,
 				errors,
 				title: "Некорректный запрос.",
-				detail: "Проверьте поля amount и comment.");
+				detail: "Проверьте поля coordinatorUserId, amount и comment.");
 		}
 
 		var result = await _points.CreateTransactionAsync(
@@ -172,6 +182,8 @@ public sealed class UserPointsController : ControllerBase
 			userId,
 			request.Amount,
 			comment,
+			coordinatorUserId,
+			taskId: null,
 			cancellationToken);
 
 		if(!result.IsSuccess)
@@ -184,7 +196,13 @@ public sealed class UserPointsController : ControllerBase
 	}
 
 	private static UserPointsTransactionDto ToDto(UserPointsTransactionModel t)
-		=> new(t.Id, t.Amount, t.TransactionAt, t.Comment);
+		=> new(
+			t.Id,
+			t.Amount,
+			t.TransactionAt,
+			t.Comment,
+			t.CoordinatorUserId,
+			t.TaskId);
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
 		=> this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);

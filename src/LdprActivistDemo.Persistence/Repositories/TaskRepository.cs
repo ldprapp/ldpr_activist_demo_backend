@@ -89,22 +89,19 @@ public sealed class TaskRepository : ITaskRepository
 			autoVerificationActionType = normalizedAutoVerificationActionType;
 		}
 
-		var trustedAdminIds = model.TrustedAdminIds
-			.Where(x => x != Guid.Empty)
-			.Distinct()
-			.ToArray();
-
-		if(trustedAdminIds.Length > 0)
+		var trustedCoordinatorIds = model.TrustedCoordinatorIds
+	.Where(x => x != Guid.Empty)
+	.Distinct()
+	.ToArray();
+		if(trustedCoordinatorIds.Length > 0)
 		{
-			var existingAdminIds = await _db.Users.AsNoTracking()
-				.Where(u => trustedAdminIds.Contains(u.Id) && (u.Role == UserRoles.Coordinator || u.Role == UserRoles.Admin))
+			var existingCoordinatorIds = await _db.Users.AsNoTracking()
+				.Where(u => trustedCoordinatorIds.Contains(u.Id) && (u.Role == UserRoles.Coordinator || u.Role == UserRoles.Admin))
 				.Select(u => u.Id)
 				.ToListAsync(cancellationToken);
-
-			if(existingAdminIds.Count != trustedAdminIds.Length)
+			if(existingCoordinatorIds.Count != trustedCoordinatorIds.Length)
 			{
-				_logger.LogWarning("CreateTask rejected: some TrustedAdminIds not found or have no coordinator/admin role. ActorUserId={ActorUserId}.",
-					actorUserId);
+				_logger.LogWarning("CreateTask rejected: some TrustedCoordinatorIds not found or have no coordinator/admin role. ActorUserId={ActorUserId}.", actorUserId);
 				return TaskOperationResult<Guid>.Fail(TaskOperationError.UserNotFound);
 			}
 		}
@@ -135,7 +132,7 @@ public sealed class TaskRepository : ITaskRepository
 				: null,
 			ExecutionLocation = model.ExecutionLocation,
 			PublishedAt = model.PublishedAt,
-			DeadlineAt = model.DeadlineAt ?? model.PublishedAt,
+			DeadlineAt = model.DeadlineAt,
 			Status = TaskStatus.Open,
 			VerificationType = verificationType,
 			ReuseType = reuseType,
@@ -146,12 +143,12 @@ public sealed class TaskRepository : ITaskRepository
 
 		_db.Tasks.Add(entity);
 
-		foreach(var adminId in trustedAdminIds)
+		foreach(var coordinatorId in trustedCoordinatorIds)
 		{
-			_db.TaskTrustedAdmins.Add(new TaskTrustedAdmin
+			_db.TaskTrustedCoordinators.Add(new TaskTrustedCoordinator
 			{
 				TaskId = entity.Id,
-				AdminUserId = adminId,
+				CoordinatorUserId = coordinatorId,
 			});
 		}
 
@@ -181,17 +178,11 @@ public sealed class TaskRepository : ITaskRepository
 
 		if(!isAuthor)
 		{
-			var isTrustedAdmin = UserRoleRules.HasCoordinatorAccess(actor.Role) && await _db.TaskTrustedAdmins.AsNoTracking()
-				.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
-
-			if(!isTrustedAdmin)
+			var isTrustedCoordinator = UserRoleRules.HasCoordinatorAccess(actor.Role) && await _db.TaskTrustedCoordinators.AsNoTracking()
+	.AnyAsync(x => x.TaskId == taskId && x.CoordinatorUserId == actorUserId, cancellationToken);
+			if(!isTrustedCoordinator)
 			{
-				_logger.LogWarning(
-					"UpdateTask rejected: actor has no edit rights (not author and not trusted admin). ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}, IsAdmin={IsAdmin}.",
-					actorUserId,
-					taskId,
-					task.AuthorUserId,
-					actor.Role);
+				_logger.LogWarning("UpdateTask rejected: actor has no edit rights (not author and not trusted coordinator). ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}, ActorRole={ActorRole}.", actorUserId, taskId, task.AuthorUserId, actor.Role);
 				return TaskOperationResult.Fail(TaskOperationError.Forbidden);
 			}
 		}
@@ -276,22 +267,19 @@ public sealed class TaskRepository : ITaskRepository
 			}
 		}
 
-		var trustedAdminIds = model.TrustedAdminIds
-			.Where(x => x != Guid.Empty)
-			.Distinct()
-			.ToArray();
-
-		if(trustedAdminIds.Length > 0)
+		var trustedCoordinatorIds = model.TrustedCoordinatorIds
+	.Where(x => x != Guid.Empty)
+	.Distinct()
+	.ToArray();
+		if(trustedCoordinatorIds.Length > 0)
 		{
-			var existingAdminIds = await _db.Users.AsNoTracking()
-				.Where(u => trustedAdminIds.Contains(u.Id) && (u.Role == UserRoles.Coordinator || u.Role == UserRoles.Admin))
+			var existingCoordinatorIds = await _db.Users.AsNoTracking()
+				.Where(u => trustedCoordinatorIds.Contains(u.Id) && (u.Role == UserRoles.Coordinator || u.Role == UserRoles.Admin))
 				.Select(u => u.Id)
 				.ToListAsync(cancellationToken);
-
-			if(existingAdminIds.Count != trustedAdminIds.Length)
+			if(existingCoordinatorIds.Count != trustedCoordinatorIds.Length)
 			{
-				_logger.LogWarning("UpdateTask rejected: some TrustedAdminIds not found or have no coordinator/admin role. ActorUserId={ActorUserId}, TaskId={TaskId}.",
-					actorUserId, taskId);
+				_logger.LogWarning("UpdateTask rejected: some TrustedCoordinatorIds not found or have no coordinator/admin role. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 				return TaskOperationResult.Fail(TaskOperationError.UserNotFound);
 			}
 		}
@@ -324,18 +312,18 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		task.ExecutionLocation = model.ExecutionLocation;
-		task.DeadlineAt = model.DeadlineAt ?? task.PublishedAt;
+		task.DeadlineAt = model.DeadlineAt;
 		task.RegionId = geoResolution.RegionId;
 		task.CityId = geoResolution.CityId;
 
-		var existing = await _db.TaskTrustedAdmins.Where(x => x.TaskId == task.Id).ToListAsync(cancellationToken);
-		_db.TaskTrustedAdmins.RemoveRange(existing);
-		foreach(var adminId in trustedAdminIds)
+		var existing = await _db.TaskTrustedCoordinators.Where(x => x.TaskId == task.Id).ToListAsync(cancellationToken);
+		_db.TaskTrustedCoordinators.RemoveRange(existing);
+		foreach(var coordinatorId in trustedCoordinatorIds)
 		{
-			_db.TaskTrustedAdmins.Add(new TaskTrustedAdmin
+			_db.TaskTrustedCoordinators.Add(new TaskTrustedCoordinator
 			{
 				TaskId = task.Id,
-				AdminUserId = adminId,
+				CoordinatorUserId = coordinatorId,
 			});
 		}
 
@@ -446,12 +434,12 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<TaskModel>> GetCoordinatorAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
 		if(actor is null)
 		{
-			_logger.LogWarning("GetTaskAdmin rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
+			_logger.LogWarning("GetTaskCoordinator rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.InvalidCredentials);
 		}
 
@@ -471,9 +459,9 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		var trusted = await _db.TaskTrustedAdmins.AsNoTracking()
+		var trusted = await _db.TaskTrustedCoordinators.AsNoTracking()
 			.Where(x => x.TaskId == taskId)
-			.Select(x => x.AdminUserId)
+			.Select(x => x.CoordinatorUserId)
 			.ToListAsync(cancellationToken);
 
 		return TaskOperationResult<TaskModel>.Success(ToModel(task, trusted, task.Region.Name, task.City?.Name));
@@ -490,9 +478,9 @@ public sealed class TaskRepository : ITaskRepository
 			return TaskOperationResult<TaskModel>.Fail(TaskOperationError.TaskNotFound);
 		}
 
-		var trusted = await _db.TaskTrustedAdmins.AsNoTracking()
+		var trusted = await _db.TaskTrustedCoordinators.AsNoTracking()
 		   .Where(x => x.TaskId == taskId)
-		   .Select(x => x.AdminUserId)
+		   .Select(x => x.CoordinatorUserId)
 		   .ToListAsync(cancellationToken);
 
 		return TaskOperationResult<TaskModel>.Success(ToModel(task, trusted, task.Region.Name, task.City?.Name));
@@ -536,16 +524,12 @@ public sealed class TaskRepository : ITaskRepository
 
 		return await LoadTrustedAndMapAsync(tasks, cancellationToken);
 	}
-
-	public async Task<IReadOnlyList<TaskModel>> GetByAdminAsync(Guid adminUserId, CancellationToken cancellationToken)
+	public async Task<IReadOnlyList<TaskModel>> GetByCoordinatorAsync(Guid coordinatorUserId, CancellationToken cancellationToken)
 	{
 		var tasks = await _db.Tasks.AsNoTracking()
-			.Where(t =>
-				t.AuthorUserId == adminUserId
-				|| _db.TaskTrustedAdmins.AsNoTracking().Any(x => x.TaskId == t.Id && x.AdminUserId == adminUserId))
+			.Where(t => t.AuthorUserId == coordinatorUserId || _db.TaskTrustedCoordinators.AsNoTracking().Any(x => x.TaskId == t.Id && x.CoordinatorUserId == coordinatorUserId))
 			.OrderByDescending(t => t.PublishedAt)
 			.ToListAsync(cancellationToken);
-
 		return await LoadTrustedAndMapAsync(tasks, cancellationToken);
 	}
 
@@ -648,13 +632,10 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		var taskIds = tasks.Select(x => x.Id).ToList();
-		var trustedMap = await _db.TaskTrustedAdmins.AsNoTracking()
-			.Where(x => taskIds.Contains(x.TaskId))
-			.GroupBy(x => x.TaskId)
-			.ToDictionaryAsync(
-				g => g.Key,
-				g => (IReadOnlyList<Guid>)g.Select(x => x.AdminUserId).ToList(),
-				cancellationToken);
+		var trustedMap = await _db.TaskTrustedCoordinators.AsNoTracking()
+	.Where(x => taskIds.Contains(x.TaskId))
+	.GroupBy(x => x.TaskId)
+	.ToDictionaryAsync(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(x => x.CoordinatorUserId).ToList(), cancellationToken);
 
 		var geoMap = await _db.Tasks.AsNoTracking()
 			.Where(x => taskIds.Contains(x.Id))
@@ -837,8 +818,7 @@ public sealed class TaskRepository : ITaskRepository
 
 		return false;
 	}
-
-	private static TaskModel ToModel(TaskEntity t, IReadOnlyList<Guid> trustedAdminIds, string regionName, string? cityName)
+	private static TaskModel ToModel(TaskEntity t, IReadOnlyList<Guid> trustedCoordinatorIds, string regionName, string? cityName)
 		=> new(
 			t.Id,
 			t.AuthorUserId,
@@ -853,7 +833,7 @@ public sealed class TaskRepository : ITaskRepository
 			t.Status,
 			regionName,
 			cityName,
-			trustedAdminIds,
+			trustedCoordinatorIds,
 			t.VerificationType,
 			t.ReuseType,
 			t.AutoVerificationActionType);

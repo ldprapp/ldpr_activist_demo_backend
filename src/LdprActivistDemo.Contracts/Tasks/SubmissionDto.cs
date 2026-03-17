@@ -6,7 +6,7 @@ public sealed record SubmissionDto(
 	Guid UserId,
 	DateTimeOffset SubmittedAt,
 	string DecisionStatus,
-	Guid? DecidedByAdminId,
+	Guid? DecidedByCoordinatorId,
 	DateTimeOffset? DecidedAt,
 	IReadOnlyList<Guid>? PhotoImageIds,
 	string? ProofText);

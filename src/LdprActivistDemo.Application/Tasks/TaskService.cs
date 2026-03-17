@@ -64,13 +64,10 @@ public sealed class TaskService : ITaskService
 			? await _tasks.CloseAsync(actorUserId, taskId, cancellationToken)
 			: TaskOperationResult.Fail(authError.Value);
 	}
-
-	public async Task<TaskOperationResult<TaskModel>> GetAdminAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<TaskModel>> GetCoordinatorAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 	{
 		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
-		return authError is null
-			? await _tasks.GetAdminAsync(actorUserId, taskId, cancellationToken)
-			: TaskOperationResult<TaskModel>.Fail(authError.Value);
+		return authError is null ? await _tasks.GetCoordinatorAsync(actorUserId, taskId, cancellationToken) : TaskOperationResult<TaskModel>.Fail(authError.Value);
 	}
 
 	public Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken)
@@ -83,10 +80,8 @@ public sealed class TaskService : ITaskService
 		=> _tasks.GetByRegionAsync(regionName, cancellationToken);
 
 	public Task<IReadOnlyList<TaskModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken)
-		=> _tasks.GetByCityAsync(cityName, cancellationToken);
-
-	public Task<IReadOnlyList<TaskModel>> GetByAdminAsync(Guid adminUserId, CancellationToken cancellationToken)
-		=> _tasks.GetByAdminAsync(adminUserId, cancellationToken);
+		=> _tasks.GetByCityAsync(cityName, cancellationToken); public Task<IReadOnlyList<TaskModel>> GetByCoordinatorAsync(Guid coordinatorUserId, CancellationToken cancellationToken)
+		=> _tasks.GetByCoordinatorAsync(coordinatorUserId, cancellationToken);
 
 	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetAvailableForUserAsync(Guid userId, CancellationToken cancellationToken)
 		=> _tasks.GetAvailableForUserAsync(userId, cancellationToken);
@@ -184,12 +179,16 @@ public sealed class TaskService : ITaskService
 			: TaskOperationResult<IReadOnlyList<TaskModel>>.Fail(authError.Value);
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionAdminFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid? userId, string? decisionStatus, CancellationToken cancellationToken)
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionCoordinatorFeedAsync(
+	Guid actorUserId,
+	string actorUserPassword,
+	Guid? taskId,
+	Guid? userId,
+	string? decisionStatus,
+	CancellationToken cancellationToken)
 	{
 		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
-		return authError is null
-			? await _submissions.GetAdminFeedAsync(actorUserId, taskId, userId, decisionStatus, cancellationToken)
-			: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
+		return authError is null ? await _submissions.GetCoordinatorFeedAsync(actorUserId, taskId, userId, decisionStatus, cancellationToken) : TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
 	}
 
 	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(

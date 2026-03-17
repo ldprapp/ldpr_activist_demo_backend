@@ -16,5 +16,7 @@ public interface IUserPointsTransactionRepository
 		int amount,
 		string comment,
 		DateTimeOffset transactionAtUtc,
+		Guid? coordinatorUserId,
+		Guid? taskId,
 		CancellationToken cancellationToken);
 }

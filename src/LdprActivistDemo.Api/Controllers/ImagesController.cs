@@ -107,6 +107,11 @@ public sealed class ImagesController : ControllerBase
 				StatusCodes.Status404NotFound,
 				ApiErrorCodes.ImageNotFound,
 				"Картинка не найдена."),
+			ImageDeleteError.InUse => this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.ImageInUse,
+				"Картинка используется.",
+				"Нельзя удалить картинку, пока она используется как системная."),
 			_ => this.ProblemWithCode(
 				StatusCodes.Status500InternalServerError,
 				ApiErrorCodes.InternalError,

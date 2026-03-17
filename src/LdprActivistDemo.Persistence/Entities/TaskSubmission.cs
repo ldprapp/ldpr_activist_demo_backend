@@ -16,11 +16,8 @@ public sealed class TaskSubmission
 
 	public DateTimeOffset SubmittedAt { get; set; }
 
-	public string DecisionStatus { get; set; } = TaskSubmissionDecisionStatus.InProgress;
-
-	public Guid? DecidedByAdminId { get; set; }
-
-	public User? DecidedByAdmin { get; set; }
+	public string DecisionStatus { get; set; } = TaskSubmissionDecisionStatus.InProgress; public Guid? DecidedByCoordinatorId { get; set; }
+	public User? DecidedByCoordinator { get; set; }
 
 	public DateTimeOffset? DecidedAt { get; set; }
 

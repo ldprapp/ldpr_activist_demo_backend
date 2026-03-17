@@ -19,8 +19,8 @@ public sealed class AppDbContext : DbContext
 	public DbSet<User> Users => Set<User>();
 	public DbSet<UserPointsTransaction> UserPointsTransactions => Set<UserPointsTransaction>();
 
-	public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
-	public DbSet<TaskTrustedAdmin> TaskTrustedAdmins => Set<TaskTrustedAdmin>();
+	public DbSet<SystemImageEntity> SystemImages => Set<SystemImageEntity>();
+	public DbSet<TaskEntity> Tasks => Set<TaskEntity>(); public DbSet<TaskTrustedCoordinator> TaskTrustedCoordinators => Set<TaskTrustedCoordinator>();
 	public DbSet<TaskSubmission> TaskSubmissions => Set<TaskSubmission>();
 	public DbSet<TaskSubmissionImage> TaskSubmissionImages => Set<TaskSubmissionImage>();
 	public DbSet<ImageEntity> Images => Set<ImageEntity>();
@@ -30,19 +30,34 @@ public sealed class AppDbContext : DbContext
 		base.OnModelCreating(modelBuilder);
 
 		modelBuilder.Entity<ImageEntity>(b =>
- 		{
- 			b.ToTable("images");
- 			b.HasKey(x => x.Id);
-			 b.Property(x => x.OwnerUserId).IsRequired();
-			 b.Property(x => x.ContentType).IsRequired();
-			 b.Property(x => x.Data).IsRequired();
-			 b.HasIndex(x => x.OwnerUserId);
+		{
+			b.ToTable("images");
+			b.HasKey(x => x.Id);
+			b.Property(x => x.OwnerUserId).IsRequired();
+			b.Property(x => x.ContentType).IsRequired();
+			b.Property(x => x.Data).IsRequired();
+			b.HasIndex(x => x.OwnerUserId);
 
-			 b.HasOne(x => x.OwnerUser)
-				 .WithMany(x => x.OwnedImages)
-				 .HasForeignKey(x => x.OwnerUserId)
-				 .OnDelete(DeleteBehavior.Cascade);
- 		});
+			b.HasOne(x => x.OwnerUser)
+				.WithMany(x => x.OwnedImages)
+				.HasForeignKey(x => x.OwnerUserId)
+				.OnDelete(DeleteBehavior.Cascade);
+		});
+
+		modelBuilder.Entity<SystemImageEntity>(b =>
+		{
+			b.ToTable("system_images");
+			b.HasKey(x => x.Id);
+			b.Property(x => x.Name).IsRequired();
+			b.Property(x => x.ImageId).IsRequired();
+			b.HasIndex(x => x.Name).IsUnique();
+			b.HasIndex(x => x.ImageId).IsUnique();
+
+			b.HasOne(x => x.Image)
+				.WithMany()
+				.HasForeignKey(x => x.ImageId)
+				.OnDelete(DeleteBehavior.Restrict);
+		});
 
 		modelBuilder.Entity<Region>(b =>
 		{
@@ -113,13 +128,27 @@ public sealed class AppDbContext : DbContext
 			b.Property(x => x.Amount).IsRequired();
 			b.Property(x => x.TransactionAt).IsRequired();
 			b.Property(x => x.Comment).IsRequired();
+			b.Property(x => x.CoordinatorUserId);
+			b.Property(x => x.TaskId);
 
 			b.HasOne(x => x.User)
 				.WithMany()
 				.HasForeignKey(x => x.UserId)
 				.OnDelete(DeleteBehavior.Cascade);
 
+			b.HasOne(x => x.CoordinatorUser)
+				.WithMany()
+				.HasForeignKey(x => x.CoordinatorUserId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			b.HasOne(x => x.Task)
+				.WithMany()
+				.HasForeignKey(x => x.TaskId)
+				.OnDelete(DeleteBehavior.SetNull);
+
 			b.HasIndex(x => new { x.UserId, x.TransactionAt });
+			b.HasIndex(x => x.CoordinatorUserId);
+			b.HasIndex(x => x.TaskId);
 		});
 
 		modelBuilder.Entity<TaskEntity>(b =>
@@ -188,21 +217,17 @@ public sealed class AppDbContext : DbContext
 				.OnDelete(DeleteBehavior.Restrict);
 
 			b.HasIndex(x => new { x.RegionId, x.CityId, x.Status, x.DeadlineAt });
-		});
-
-		modelBuilder.Entity<TaskTrustedAdmin>(b =>
+		}); modelBuilder.Entity<TaskTrustedCoordinator>(b =>
 		{
-			b.ToTable("task_trusted_admins");
-			b.HasKey(x => new { x.TaskId, x.AdminUserId });
-
+			b.ToTable("task_trusted_coordinators");
+			b.HasKey(x => new { x.TaskId, x.CoordinatorUserId });
 			b.HasOne(x => x.Task)
-				.WithMany(t => t.TrustedAdmins)
+				.WithMany(t => t.TrustedCoordinators)
 				.HasForeignKey(x => x.TaskId)
 				.OnDelete(DeleteBehavior.Cascade);
-
-			b.HasOne(x => x.AdminUser)
+			b.HasOne(x => x.CoordinatorUser)
 				.WithMany()
-				.HasForeignKey(x => x.AdminUserId)
+				.HasForeignKey(x => x.CoordinatorUserId)
 				.OnDelete(DeleteBehavior.Cascade);
 		});
 
@@ -230,11 +255,9 @@ public sealed class AppDbContext : DbContext
 			b.HasOne(x => x.User)
 				.WithMany()
 				.HasForeignKey(x => x.UserId)
-				.OnDelete(DeleteBehavior.Cascade);
-
-			b.HasOne(x => x.DecidedByAdmin)
+				.OnDelete(DeleteBehavior.Cascade); b.HasOne(x => x.DecidedByCoordinator)
 				.WithMany()
-				.HasForeignKey(x => x.DecidedByAdminId)
+				.HasForeignKey(x => x.DecidedByCoordinatorId)
 				.OnDelete(DeleteBehavior.SetNull);
 		});
 

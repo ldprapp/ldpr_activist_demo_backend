@@ -28,6 +28,21 @@ public sealed class ImageRepository : IImageRepository
 			.FirstOrDefaultAsync(cancellationToken);
 	}
 
+	public async Task<ImagePayload?> GetSystemByNameAsync(string name, CancellationToken cancellationToken = default)
+	{
+		name = NormalizeSystemImageName(name);
+		if(name.Length == 0)
+		{
+			return null;
+		}
+
+		return await _db.SystemImages
+			.AsNoTracking()
+			.Where(x => x.Name == name)
+			.Select(x => new ImagePayload(x.Image.Id, x.Image.ContentType, x.Image.Data))
+			.FirstOrDefaultAsync(cancellationToken);
+	}
+
 	public async Task<Guid?> GetOwnerUserIdAsync(Guid id, CancellationToken cancellationToken = default)
 	{
 		if(id == Guid.Empty)
@@ -40,6 +55,18 @@ public sealed class ImageRepository : IImageRepository
 			.Where(x => x.Id == id)
 			.Select(x => (Guid?)x.OwnerUserId)
 			.FirstOrDefaultAsync(cancellationToken);
+	}
+
+	public async Task<bool> IsUsedBySystemImageAsync(Guid id, CancellationToken cancellationToken = default)
+	{
+		if(id == Guid.Empty)
+		{
+			return false;
+		}
+
+		return await _db.SystemImages
+			.AsNoTracking()
+			.AnyAsync(x => x.ImageId == id, cancellationToken);
 	}
 
 	public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -153,4 +180,77 @@ public sealed class ImageRepository : IImageRepository
 
 		return ids;
 	}
+
+	public async Task<SystemImageStorageUpsertResult> UpsertSystemImageAsync(
+		Guid ownerUserId,
+		string name,
+		ImageCreateModel model,
+		CancellationToken cancellationToken = default)
+	{
+		if(ownerUserId == Guid.Empty)
+		{
+			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
+		}
+
+		if(model is null)
+		{
+			throw new ArgumentNullException(nameof(model));
+		}
+
+		if(model.Data is null || model.Data.Length == 0)
+		{
+			throw new InvalidOperationException("Image data is empty.");
+		}
+
+		var normalizedName = NormalizeSystemImageName(name);
+		if(normalizedName.Length == 0)
+		{
+			throw new InvalidOperationException("System image name is empty.");
+		}
+
+		var newImageId = Guid.NewGuid();
+		_db.Images.Add(new ImageEntity
+		{
+			Id = newImageId,
+			OwnerUserId = ownerUserId,
+			ContentType = string.IsNullOrWhiteSpace(model.ContentType)
+				? "application/octet-stream"
+				: model.ContentType.Trim(),
+			Data = model.Data,
+		});
+
+		var existing = await _db.SystemImages.FirstOrDefaultAsync(x => x.Name == normalizedName, cancellationToken);
+		var oldImageId = existing?.ImageId;
+
+		SystemImageEntity entity;
+		var isCreated = existing is null;
+		if(isCreated)
+		{
+			entity = new SystemImageEntity
+			{
+				Id = Guid.NewGuid(),
+				ImageId = newImageId,
+				Name = normalizedName,
+			};
+
+			_db.SystemImages.Add(entity);
+		}
+		else
+		{
+			entity = existing!;
+			entity.ImageId = newImageId;
+		}
+
+		await _db.SaveChangesAsync(cancellationToken);
+
+		if(oldImageId.HasValue && oldImageId.Value != newImageId)
+		{
+			await ImageGcHelpers.DeleteOrphanManyAsync(_db, new[] { oldImageId.Value }, cancellationToken);
+		}
+
+		return new SystemImageStorageUpsertResult(isCreated, new SystemImageModel(entity.Id, newImageId, normalizedName));
+	}
+
+	private static string NormalizeSystemImageName(string? value)
+		=> (value ?? string.Empty).Trim().ToLowerInvariant();
 }

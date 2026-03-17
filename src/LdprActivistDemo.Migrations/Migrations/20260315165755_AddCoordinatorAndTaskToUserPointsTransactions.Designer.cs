@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260315165755_AddCoordinatorAndTaskToUserPointsTransactions")]
+    partial class AddCoordinatorAndTaskToUserPointsTransactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -89,30 +92,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.ToTable("regions", (string)null);
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.SystemImageEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ImageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ImageId")
-                        .IsUnique();
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("system_images", (string)null);
-                });
-
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -131,7 +110,7 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<Guid?>("CoverImageId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTimeOffset?>("DeadlineAt")
+                    b.Property<DateTimeOffset>("DeadlineAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
@@ -207,7 +186,7 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<DateTimeOffset?>("DecidedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("DecidedByCoordinatorId")
+                    b.Property<Guid?>("DecidedByAdminId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("DecisionStatus")
@@ -230,7 +209,7 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DecidedByCoordinatorId");
+                    b.HasIndex("DecidedByAdminId");
 
                     b.HasIndex("UserId");
 
@@ -257,19 +236,19 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.ToTable("task_submission_images", (string)null);
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskTrustedCoordinator", b =>
+            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskTrustedAdmin", b =>
                 {
                     b.Property<Guid>("TaskId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("CoordinatorUserId")
+                    b.Property<Guid>("AdminUserId")
                         .HasColumnType("uuid");
 
-                    b.HasKey("TaskId", "CoordinatorUserId");
+                    b.HasKey("TaskId", "AdminUserId");
 
-                    b.HasIndex("CoordinatorUserId");
+                    b.HasIndex("AdminUserId");
 
-                    b.ToTable("task_trusted_coordinators", (string)null);
+                    b.ToTable("task_trusted_admins", (string)null);
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.User", b =>
@@ -396,17 +375,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Navigation("OwnerUser");
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.SystemImageEntity", b =>
-                {
-                    b.HasOne("LdprActivistDemo.Persistence.ImageEntity", "Image")
-                        .WithMany()
-                        .HasForeignKey("ImageId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Image");
-                });
-
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>
                 {
                     b.HasOne("LdprActivistDemo.Persistence.User", "AuthorUser")
@@ -440,9 +408,9 @@ namespace LdprActivistDemo.Migrations.Migrations
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskSubmission", b =>
                 {
-                    b.HasOne("LdprActivistDemo.Persistence.User", "DecidedByCoordinator")
+                    b.HasOne("LdprActivistDemo.Persistence.User", "DecidedByAdmin")
                         .WithMany()
-                        .HasForeignKey("DecidedByCoordinatorId")
+                        .HasForeignKey("DecidedByAdminId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("LdprActivistDemo.Persistence.TaskEntity", "Task")
@@ -457,7 +425,7 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("DecidedByCoordinator");
+                    b.Navigation("DecidedByAdmin");
 
                     b.Navigation("Task");
 
@@ -483,21 +451,21 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Navigation("Submission");
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskTrustedCoordinator", b =>
+            modelBuilder.Entity("LdprActivistDemo.Persistence.TaskTrustedAdmin", b =>
                 {
-                    b.HasOne("LdprActivistDemo.Persistence.User", "CoordinatorUser")
+                    b.HasOne("LdprActivistDemo.Persistence.User", "AdminUser")
                         .WithMany()
-                        .HasForeignKey("CoordinatorUserId")
+                        .HasForeignKey("AdminUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("LdprActivistDemo.Persistence.TaskEntity", "Task")
-                        .WithMany("TrustedCoordinators")
+                        .WithMany("TrustedAdmins")
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("CoordinatorUser");
+                    b.Navigation("AdminUser");
 
                     b.Navigation("Task");
                 });
@@ -553,7 +521,7 @@ namespace LdprActivistDemo.Migrations.Migrations
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>
                 {
-                    b.Navigation("TrustedCoordinators");
+                    b.Navigation("TrustedAdmins");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskSubmission", b =>

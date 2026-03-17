@@ -72,7 +72,9 @@ public sealed class UserPointsTransactionRepository : IUserPointsTransactionRepo
 				x.UserId,
 				x.Amount,
 				x.TransactionAt,
-				x.Comment))
+				x.Comment,
+				x.CoordinatorUserId,
+				x.TaskId))
 			.ToListAsync(cancellationToken);
 
 		return list;
@@ -83,8 +85,17 @@ public sealed class UserPointsTransactionRepository : IUserPointsTransactionRepo
 		int amount,
 		string comment,
 		DateTimeOffset transactionAtUtc,
+		Guid? coordinatorUserId,
+		Guid? taskId,
 		CancellationToken cancellationToken)
 	{
+		coordinatorUserId = coordinatorUserId.HasValue && coordinatorUserId.Value == Guid.Empty
+			? null
+			: coordinatorUserId;
+		taskId = taskId.HasValue && taskId.Value == Guid.Empty
+			? null
+			: taskId;
+
 		if(userId == Guid.Empty)
 		{
 			return null;
@@ -107,6 +118,8 @@ public sealed class UserPointsTransactionRepository : IUserPointsTransactionRepo
 			Amount = amount,
 			TransactionAt = transactionAtUtc,
 			Comment = comment.Trim(),
+			CoordinatorUserId = coordinatorUserId,
+			TaskId = taskId,
 		});
 
 		await _db.SaveChangesAsync(cancellationToken);

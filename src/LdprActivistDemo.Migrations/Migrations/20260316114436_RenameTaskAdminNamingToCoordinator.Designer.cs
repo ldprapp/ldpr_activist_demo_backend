@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260316114436_RenameTaskAdminNamingToCoordinator")]
+    partial class RenameTaskAdminNamingToCoordinator
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -89,30 +92,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.ToTable("regions", (string)null);
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.SystemImageEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ImageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ImageId")
-                        .IsUnique();
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("system_images", (string)null);
-                });
-
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -131,7 +110,7 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<Guid?>("CoverImageId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTimeOffset?>("DeadlineAt")
+                    b.Property<DateTimeOffset>("DeadlineAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
@@ -394,17 +373,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .IsRequired();
 
                     b.Navigation("OwnerUser");
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.SystemImageEntity", b =>
-                {
-                    b.HasOne("LdprActivistDemo.Persistence.ImageEntity", "Image")
-                        .WithMany()
-                        .HasForeignKey("ImageId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Image");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>

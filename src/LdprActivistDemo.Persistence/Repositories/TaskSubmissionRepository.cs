@@ -66,12 +66,12 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		if(UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
 			var isAuthor = task.AuthorUserId == actorUserId;
-			var isTrustedAdmin = await _db.TaskTrustedAdmins.AsNoTracking()
-				.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
-			if(isAuthor || isTrustedAdmin)
+			var isTrustedCoordinator = await _db.TaskTrustedCoordinators.AsNoTracking()
+				.AnyAsync(x => x.TaskId == taskId && x.CoordinatorUserId == actorUserId, cancellationToken);
+			if(isAuthor || isTrustedCoordinator)
 			{
 				_logger.LogWarning(
-					"SubmitTask rejected: admin cannot submit to own/responsible task. ActorUserId={ActorUserId}, TaskId={TaskId}.",
+					"SubmitTask rejected: coordinator/admin cannot submit to own/responsible task. ActorUserId={ActorUserId}, TaskId={TaskId}.",
 					actorUserId,
 					taskId);
 				return TaskSubmitOperationResult.Fail(TaskOperationError.TaskAccessDenied);
@@ -107,7 +107,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			DecisionStatus = isImmediateAutoApproval
 				? TaskSubmissionDecisionStatus.Approve
 				: TaskSubmissionDecisionStatus.InProgress,
-			DecidedByAdminId = null,
+			DecidedByCoordinatorId = null,
 			DecidedAt = decidedAt,
 			ProofText = null,
 		};
@@ -122,6 +122,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				UserId = userId,
 				Amount = task.RewardPoints,
 				TransactionAt = decidedAt!.Value,
+				TaskId = taskId,
 				Comment = $"Points for approval of submission {submission.Id:D}.",
 			});
 		}
@@ -185,7 +186,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		submission.SubmittedAt = model.SubmittedAt;
 		submission.ProofText = model.ProofText;
 		submission.DecisionStatus = TaskSubmissionDecisionStatus.SubmittedForReview;
-		submission.DecidedByAdminId = null;
+		submission.DecidedByCoordinatorId = null;
 		submission.DecidedAt = null;
 
 		var removed = oldPhotoIds.Except(newPhotoIds).ToArray();
@@ -330,7 +331,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		if(isRejected)
 		{
 			existing.DecisionStatus = TaskSubmissionDecisionStatus.SubmittedForReview;
-			existing.DecidedByAdminId = null;
+			existing.DecidedByCoordinatorId = null;
 			existing.DecidedAt = null;
 		}
 
@@ -536,7 +537,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Approve;
-		submission.DecidedByAdminId = actorUserId;
+		submission.DecidedByCoordinatorId = actorUserId;
 		submission.DecidedAt = decidedAt;
 
 		if(taskMeta.RewardPoints != 0)
@@ -546,6 +547,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				Id = Guid.NewGuid(),
 				UserId = submission.UserId,
 				Amount = taskMeta.RewardPoints,
+				CoordinatorUserId = actorUserId,
+				TaskId = submission.TaskId,
 				TransactionAt = decidedAt,
 				Comment = $"Points for approval of submission {submissionId:D}.",
 			});
@@ -599,13 +602,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		submission.DecisionStatus = LdprActivistDemo.Contracts.Tasks.TaskSubmissionDecisionStatus.Rejected;
-		submission.DecidedByAdminId = actorUserId;
+		submission.DecidedByCoordinatorId = actorUserId;
 		submission.DecidedAt = decidedAt;
 		await _db.SaveChangesAsync(cancellationToken);
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetAdminFeedAsync(
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetCoordinatorFeedAsync(
 		Guid actorUserId,
 		Guid? taskId,
 		Guid? userId,
@@ -635,7 +638,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		IQueryable<Guid> accessibleTaskIds = _db.Tasks.AsNoTracking()
 			.Where(t =>
 				t.AuthorUserId == actorUserId
-				|| _db.TaskTrustedAdmins.AsNoTracking().Any(x => x.TaskId == t.Id && x.AdminUserId == actorUserId))
+				|| _db.TaskTrustedCoordinators.AsNoTracking().Any(x => x.TaskId == t.Id && x.CoordinatorUserId == actorUserId))
 			.Where(t => t.VerificationType != TaskVerificationType.Auto)
 			.Select(t => t.Id);
 
@@ -778,11 +781,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				? TaskOperationError.TaskAutoVerificationNotSupported
 				: TaskOperationError.None;
 		}
-
-		var isTrustedAdmin = await _db.TaskTrustedAdmins.AsNoTracking()
-			.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
-
-		if(!isTrustedAdmin)
+		var isTrustedCoordinator = await _db.TaskTrustedCoordinators.AsNoTracking()
+			.AnyAsync(x => x.TaskId == taskId && x.CoordinatorUserId == actorUserId, cancellationToken);
+		if(!isTrustedCoordinator)
 		{
 			return TaskOperationError.Forbidden;
 		}
@@ -813,10 +814,9 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				: TaskOperationError.None;
 		}
 
-		var isTrustedAdmin = UserRoleRules.HasCoordinatorAccess(actor.Role) && await _db.TaskTrustedAdmins.AsNoTracking()
-			.AnyAsync(x => x.TaskId == taskId && x.AdminUserId == actorUserId, cancellationToken);
-
-		if(!isTrustedAdmin)
+		var isTrustedCoordinator = UserRoleRules.HasCoordinatorAccess(actor.Role) && await _db.TaskTrustedCoordinators.AsNoTracking()
+			.AnyAsync(x => x.TaskId == taskId && x.CoordinatorUserId == actorUserId, cancellationToken);
+		if(!isTrustedCoordinator)
 		{
 			return TaskOperationError.Forbidden;
 		}
@@ -838,7 +838,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			s.UserId,
 			s.SubmittedAt,
 			s.DecisionStatus,
-			s.DecidedByAdminId,
+			s.DecidedByCoordinatorId,
 			s.DecidedAt,
 			photoIds,
 			s.ProofText);

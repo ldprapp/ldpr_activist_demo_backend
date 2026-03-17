@@ -26,7 +26,7 @@ public sealed class TaskEntity
 
 	public DateTimeOffset PublishedAt { get; set; }
 
-	public DateTimeOffset DeadlineAt { get; set; }
+	public DateTimeOffset? DeadlineAt { get; set; }
 
 	public string Status { get; set; } = TaskStatus.Open;
 
@@ -43,6 +43,5 @@ public sealed class TaskEntity
 	public int? CityId { get; set; }
 
 	public City? City { get; set; }
-
-	public List<TaskTrustedAdmin> TrustedAdmins { get; set; } = new();
+	public List<TaskTrustedCoordinator> TrustedCoordinators { get; set; } = new();
 }

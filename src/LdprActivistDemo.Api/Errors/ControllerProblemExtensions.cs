@@ -124,6 +124,32 @@ public static class ControllerProblemExtensions
 				detail: "Целевой пользователь должен быть явно указан и совпадать с actorUserId.");
 	}
 
+	public static ActionResult? TryBuildActorGuidMatchValidationProblem(
+		this ControllerBase controller,
+		Guid actorUserId,
+		Guid comparedGuid,
+		string comparedFieldName)
+	{
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(comparedGuid == Guid.Empty)
+		{
+			errors[comparedFieldName] = new[] { $"{comparedFieldName} must be non-empty GUID." };
+		}
+		else if(actorUserId != Guid.Empty && actorUserId != comparedGuid)
+		{
+			errors[comparedFieldName] = new[] { $"{comparedFieldName} must be equal to actorUserId." };
+		}
+
+		return errors.Count == 0
+			? null
+			: controller.ValidationProblemWithCode(
+				LdprActivistDemo.Contracts.Errors.ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: $"{comparedFieldName} должен быть явно указан и совпадать с actorUserId.");
+	}
+
 	public static ActionResult? TryBuildActorPasswordMatchValidationProblem(
 		this ControllerBase controller,
 		string? actorUserPassword,

@@ -91,15 +91,33 @@ public sealed class UserPointsService : IUserPointsService
 		Guid userId,
 		int amount,
 		string comment,
+		Guid? coordinatorUserId,
+		Guid? taskId,
 		CancellationToken cancellationToken)
 	{
 		comment = (comment ?? string.Empty).Trim();
+		coordinatorUserId = coordinatorUserId.HasValue && coordinatorUserId.Value == Guid.Empty
+			? null
+			: coordinatorUserId;
+		taskId = taskId.HasValue && taskId.Value == Guid.Empty
+			? null
+			: taskId;
 
 		if(actorUserId == Guid.Empty
 		   || userId == Guid.Empty
 		   || string.IsNullOrWhiteSpace(actorUserPassword)
 		   || amount == 0
 		   || comment.Length == 0)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+		}
+
+		if(!taskId.HasValue && !coordinatorUserId.HasValue)
+		{
+			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+		}
+
+		if(coordinatorUserId.HasValue && coordinatorUserId.Value != actorUserId)
 		{
 			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
 		}
@@ -133,6 +151,8 @@ public sealed class UserPointsService : IUserPointsService
 			amount,
 			comment,
 			DateTimeOffset.UtcNow,
+			coordinatorUserId,
+			taskId,
 			cancellationToken);
 
 		return id is null
