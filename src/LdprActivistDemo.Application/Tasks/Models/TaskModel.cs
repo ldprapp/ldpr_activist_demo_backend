@@ -13,7 +13,7 @@ public sealed record TaskModel(
 	DateTimeOffset? DeadlineAt,
 	string Status,
 	string RegionName,
-	string? CityName,
+	string? SettlementName,
 	IReadOnlyList<Guid> TrustedCoordinatorIds,
 	string VerificationType,
 	string ReuseType,

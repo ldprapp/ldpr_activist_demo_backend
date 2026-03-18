@@ -12,9 +12,9 @@ public interface ITaskService
 	Task<TaskOperationResult> CloseAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskModel>> GetCoordinatorAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken);
-	Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<TaskModel>> GetByRegionAndSettlementAsync(string regionName, string settlementName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<TaskModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<TaskModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<TaskModel>> GetBySettlementAsync(string settlementName, CancellationToken cancellationToken);
 	Task<IReadOnlyList<TaskModel>> GetByCoordinatorAsync(Guid coordinatorUserId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetAvailableForUserAsync(Guid userId, CancellationToken cancellationToken);
 	Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, string actorUserPassword, Guid userId, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken);

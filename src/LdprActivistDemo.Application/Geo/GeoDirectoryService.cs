@@ -7,21 +7,21 @@ namespace LdprActivistDemo.Application.Geo;
 public sealed class GeoDirectoryService : IGeoDirectoryService
 {
 	private readonly IRegionRepository _regions;
-	private readonly ICityRepository _cities;
+	private readonly ISettlementRepository _settlements;
 	private readonly IUserRepository _users;
 
-	public GeoDirectoryService(IRegionRepository regions, ICityRepository cities, IUserRepository users)
+	public GeoDirectoryService(IRegionRepository regions, ISettlementRepository settlements, IUserRepository users)
 	{
 		_regions = regions;
-		_cities = cities;
+		_settlements = settlements;
 		_users = users;
 	}
 
 	public Task<IReadOnlyList<RegionModel>> GetRegionsAsync(CancellationToken cancellationToken)
 		=> _regions.GetAllAsync(cancellationToken);
 
-	public Task<IReadOnlyList<CityModel>> GetCitiesByRegionAsync(string regionName, CancellationToken cancellationToken)
-		=> _cities.GetByRegionAsync(regionName, cancellationToken);
+	public Task<IReadOnlyList<SettlementModel>> GetSettlementsByRegionAsync(string regionName, CancellationToken cancellationToken)
+		=> _settlements.GetByRegionAsync(regionName, cancellationToken);
 
 	public async Task<GeoMutationResult<RegionModel>> CreateRegionAsync(
 		Guid actorUserId,
@@ -44,45 +44,45 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 		return await _regions.CreateAsync(name, cancellationToken);
 	}
 
-	public async Task<GeoMutationResult<IReadOnlyList<CityModel>>> CreateCitiesAsync(
-		Guid actorUserId,
-		string actorPassword,
-		string regionName,
-		IReadOnlyList<string> cityNames,
-		CancellationToken cancellationToken)
+	public async Task<GeoMutationResult<IReadOnlyList<SettlementModel>>> CreateSettlementsAsync(
+ 		Guid actorUserId,
+ 		string actorPassword,
+ 		string regionName,
+		IReadOnlyList<string> settlementNames,
+ 		CancellationToken cancellationToken)
 	{
 		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
 		if(!hasAccess)
 		{
-			return GeoMutationResult<IReadOnlyList<CityModel>>.Fail(GeoMutationError.Unauthorized);
+			return GeoMutationResult<IReadOnlyList<SettlementModel>>.Fail(GeoMutationError.Unauthorized);
 		}
 
 		regionName = NormalizeName(regionName);
 		if(string.IsNullOrWhiteSpace(regionName))
 		{
-			return GeoMutationResult<IReadOnlyList<CityModel>>.Fail(GeoMutationError.InvalidName);
+			return GeoMutationResult<IReadOnlyList<SettlementModel>>.Fail(GeoMutationError.InvalidName);
 		}
 
-		if(cityNames is null || cityNames.Count == 0)
+		if(settlementNames is null || settlementNames.Count == 0)
 		{
-			return GeoMutationResult<IReadOnlyList<CityModel>>.Fail(GeoMutationError.InvalidName);
+			return GeoMutationResult<IReadOnlyList<SettlementModel>>.Fail(GeoMutationError.InvalidName);
 		}
 
-		var normalized = cityNames
-			.Select(NormalizeName)
-			.ToList();
+		var normalized = settlementNames
+							.Select(NormalizeName)
+							.ToList();
 
 		if(normalized.Any(string.IsNullOrWhiteSpace))
 		{
-			return GeoMutationResult<IReadOnlyList<CityModel>>.Fail(GeoMutationError.InvalidName);
+			return GeoMutationResult<IReadOnlyList<SettlementModel>>.Fail(GeoMutationError.InvalidName);
 		}
 
 		if(normalized.Count != normalized.Distinct(StringComparer.OrdinalIgnoreCase).Count())
 		{
-			return GeoMutationResult<IReadOnlyList<CityModel>>.Fail(GeoMutationError.Duplicate);
+			return GeoMutationResult<IReadOnlyList<SettlementModel>>.Fail(GeoMutationError.Duplicate);
 		}
 
-		return await _cities.CreateManyAsync(regionName, normalized, cancellationToken);
+		return await _settlements.CreateManyAsync(regionName, normalized, cancellationToken);
 	}
 
 	public async Task<GeoMutationResult<RegionModel>> UpdateRegionAsync(
@@ -108,16 +108,16 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 		return await _regions.UpdateAsync(currentName, newName, cancellationToken);
 	}
 
-	public async Task<GeoMutationResult<CityModel>> UpdateCityAsync(
-		Guid actorUserId,
-		string actorPassword,
-		CityUpdateModel model,
-		CancellationToken cancellationToken)
+	public async Task<GeoMutationResult<SettlementModel>> UpdateSettlementAsync(
+ 		Guid actorUserId,
+ 		string actorPassword,
+		SettlementUpdateModel model,
+ 		CancellationToken cancellationToken)
 	{
 		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
 		if(!hasAccess)
 		{
-			return GeoMutationResult<CityModel>.Fail(GeoMutationError.Unauthorized);
+			return GeoMutationResult<SettlementModel>.Fail(GeoMutationError.Unauthorized);
 		}
 
 		var regionName = NormalizeName(model.RegionName);
@@ -128,13 +128,61 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 			|| string.IsNullOrWhiteSpace(currentName)
 			|| string.IsNullOrWhiteSpace(newName))
 		{
-			return GeoMutationResult<CityModel>.Fail(GeoMutationError.InvalidName);
+			return GeoMutationResult<SettlementModel>.Fail(GeoMutationError.InvalidName);
 		}
 
-		return await _cities.UpdateAsync(regionName, currentName, newName, cancellationToken);
+		return await _settlements.UpdateAsync(regionName, currentName, newName, cancellationToken);
 	}
 
 	public async Task<GeoMutationResult> DeleteRegionAsync(
+		Guid actorUserId,
+		string actorPassword,
+		RegionDeleteModel model,
+		CancellationToken cancellationToken)
+	{
+		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
+		if(!hasAccess)
+		{
+			return GeoMutationResult.Fail(GeoMutationError.Unauthorized);
+		}
+
+		var regionName = NormalizeName(model.Name);
+		if(string.IsNullOrWhiteSpace(regionName))
+		{
+			return GeoMutationResult.Fail(GeoMutationError.InvalidName);
+		}
+
+		var targetRegionName = NormalizeNullableName(model.TargetRegionName);
+		return await _regions.DeleteAsync(regionName, targetRegionName, cancellationToken);
+	}
+
+	public async Task<GeoMutationResult> DeleteSettlementAsync(
+ 		Guid actorUserId,
+ 		string actorPassword,
+		SettlementDeleteModel model,
+ 		CancellationToken cancellationToken)
+	{
+		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
+		if(!hasAccess)
+		{
+			return GeoMutationResult.Fail(GeoMutationError.Unauthorized);
+		}
+
+		var regionName = NormalizeName(model.RegionName);
+		var settlementName = NormalizeName(model.SettlementName);
+
+		if(string.IsNullOrWhiteSpace(regionName) || string.IsNullOrWhiteSpace(settlementName))
+		{
+			return GeoMutationResult.Fail(GeoMutationError.InvalidName);
+		}
+
+		var targetRegionName = NormalizeNullableName(model.TargetRegionName);
+		var targetSettlementName = NormalizeNullableName(model.TargetSettlementName);
+
+		return await _settlements.DeleteAsync(regionName, settlementName, targetRegionName, targetSettlementName, cancellationToken);
+	}
+
+	public async Task<GeoMutationResult> RestoreRegionAsync(
 		Guid actorUserId,
 		string actorPassword,
 		string regionName,
@@ -152,15 +200,15 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 			return GeoMutationResult.Fail(GeoMutationError.InvalidName);
 		}
 
-		return await _regions.DeleteAsync(regionName, cancellationToken);
+		return await _regions.RestoreAsync(regionName, cancellationToken);
 	}
 
-	public async Task<GeoMutationResult> DeleteCityAsync(
-		Guid actorUserId,
-		string actorPassword,
-		string regionName,
-		string cityName,
-		CancellationToken cancellationToken)
+	public async Task<GeoMutationResult> RestoreSettlementAsync(
+ 		Guid actorUserId,
+ 		string actorPassword,
+ 		string regionName,
+		string settlementName,
+ 		CancellationToken cancellationToken)
 	{
 		var hasAccess = await HasAdminAccessAsync(actorUserId, actorPassword, cancellationToken);
 		if(!hasAccess)
@@ -169,14 +217,14 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 		}
 
 		regionName = NormalizeName(regionName);
-		cityName = NormalizeName(cityName);
+		settlementName = NormalizeName(settlementName);
 
-		if(string.IsNullOrWhiteSpace(regionName) || string.IsNullOrWhiteSpace(cityName))
+		if(string.IsNullOrWhiteSpace(regionName) || string.IsNullOrWhiteSpace(settlementName))
 		{
 			return GeoMutationResult.Fail(GeoMutationError.InvalidName);
 		}
 
-		return await _cities.DeleteAsync(regionName, cityName, cancellationToken);
+		return await _settlements.RestoreAsync(regionName, settlementName, cancellationToken);
 	}
 
 	private async Task<bool> HasAdminAccessAsync(Guid actorUserId, string actorPassword, CancellationToken cancellationToken)
@@ -198,4 +246,10 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 
 	private static string NormalizeName(string? value)
 		=> (value ?? string.Empty).Trim();
+
+	private static string? NormalizeNullableName(string? value)
+	{
+		var normalized = NormalizeName(value);
+		return normalized.Length == 0 ? null : normalized;
+	}
 }

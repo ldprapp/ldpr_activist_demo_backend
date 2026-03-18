@@ -113,14 +113,14 @@ public sealed class UserService : IUserService
 	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(string regionName, CancellationToken cancellationToken) =>
 		_users.GetByRegionAsync(regionName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(string cityName, CancellationToken cancellationToken) =>
-		_users.GetByCityAsync(cityName, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersBySettlementAsync(string settlementName, CancellationToken cancellationToken) =>
+		_users.GetBySettlementAsync(settlementName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken) =>
-		_users.GetByRegionAndCityAsync(regionName, cityName, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndSettlementAsync(string regionName, string settlementName, CancellationToken cancellationToken) =>
+		_users.GetByRegionAndSettlementAsync(regionName, settlementName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? cityName, CancellationToken cancellationToken) =>
-		_users.GetByFiltersAsync(role, regionName, cityName, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? settlementName, CancellationToken cancellationToken) =>
+		_users.GetByFiltersAsync(role, regionName, settlementName, cancellationToken);
 
 	public Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken) =>
 		_users.GetRoleAsync(userId, cancellationToken);
@@ -165,5 +165,5 @@ public sealed class UserService : IUserService
 	}
 
 	private static UserPublicModel ToPublic(UserInternalModel u) =>
-		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionName, u.CityName, u.Role, u.IsPhoneConfirmed, u.AvatarImageUrl);
+		new(u.Id, u.LastName, u.FirstName, u.MiddleName, u.Gender, u.PhoneNumber, u.BirthDate, u.RegionName, u.SettlementName, u.Role, u.IsPhoneConfirmed, u.AvatarImageUrl);
 }

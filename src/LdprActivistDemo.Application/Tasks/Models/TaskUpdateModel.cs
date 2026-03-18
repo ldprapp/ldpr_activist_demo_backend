@@ -10,7 +10,7 @@ public sealed record TaskUpdateModel(
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
 	string RegionName,
-	string? CityName,
+	string? SettlementName,
 	IReadOnlyList<Guid> TrustedCoordinatorIds,
 	string? VerificationType,
 	string? ReuseType,

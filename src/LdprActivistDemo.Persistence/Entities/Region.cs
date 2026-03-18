@@ -6,5 +6,7 @@ public sealed class Region
 
 	public string Name { get; set; } = string.Empty;
 
-	public List<City> Cities { get; set; } = new();
+	public bool IsDeleted { get; set; }
+
+	public List<Settlement> Settlements { get; set; } = new();
 }

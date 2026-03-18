@@ -28,16 +28,16 @@ public sealed class RegionsController : ControllerBase
 	public async Task<ActionResult<IReadOnlyList<RegionDto>>> GetRegions(CancellationToken cancellationToken)
 	{
 		var regions = await _geo.GetRegionsAsync(cancellationToken);
-		var dto = regions.Select(x => new RegionDto(x.Name)).ToList();
+		var dto = regions.Select(x => new RegionDto(x.Name, x.IsDeleted)).ToList();
 		return Ok(dto);
 	}
 
-	[HttpGet("{regionName}/cities")]
-	[ProducesResponseType(typeof(IReadOnlyList<CityDto>), StatusCodes.Status200OK)]
-	public async Task<ActionResult<IReadOnlyList<CityDto>>> GetCitiesByRegion(string regionName, CancellationToken cancellationToken)
+	[HttpGet("{regionName}/settlements")]
+	[ProducesResponseType(typeof(IReadOnlyList<SettlementDto>), StatusCodes.Status200OK)]
+	public async Task<ActionResult<IReadOnlyList<SettlementDto>>> GetSettlementsByRegion(string regionName, CancellationToken cancellationToken)
 	{
-		var cities = await _geo.GetCitiesByRegionAsync(regionName, cancellationToken);
-		var dto = cities.Select(x => new CityDto(x.Name)).ToList();
+		var settlements = await _geo.GetSettlementsByRegionAsync(regionName, cancellationToken);
+		var dto = settlements.Select(x => new SettlementDto(x.Name, x.IsDeleted)).ToList();
 		return Ok(dto);
 	}
 
@@ -73,14 +73,14 @@ public sealed class RegionsController : ControllerBase
 		return Created($"/api/v1/regions/{Uri.EscapeDataString(name)}", new CreateRegionResponse(name));
 	}
 
-	[HttpPost("{regionName}/cities")]
+	[HttpPost("{regionName}/settlements")]
 	[Consumes("application/json")]
-	[ProducesResponseType(typeof(CreateCitiesResponse), StatusCodes.Status201Created)]
+	[ProducesResponseType(typeof(CreateSettlementsResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-	public async Task<ActionResult<CreateCitiesResponse>> CreateCities(
+	public async Task<ActionResult<CreateSettlementsResponse>> CreateSettlements(
 		string regionName,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
@@ -93,24 +93,24 @@ public sealed class RegionsController : ControllerBase
 			return invalidActor;
 		}
 
-		if(!TryExtractCityNames(request, out var cityNames) || cityNames.Count == 0)
+		if(!TryExtractSettlementNames(request, out var settlementNames) || settlementNames.Count == 0)
 		{
 			return this.ValidationProblemWithCode(
 				ApiErrorCodes.ValidationFailed,
 				new Dictionary<string, string[]>
 				{
-					["body"] = new[] { "Request must contain at least one city name." },
+					["body"] = new[] { "Request must contain at least one settlement name." },
 				},
-				title: "Некорректный запрос.",
-			   detail: "Передайте массив названий городов либо как корневой JSON-массив, либо в поле names.");
+ 				title: "Некорректный запрос.",
+			   detail: "Передайте массив названий населённых пунктов либо как корневой JSON-массив, либо в поле names.");
 		}
 
-		var result = await _geo.CreateCitiesAsync(
-			actorUserId,
-			actorUserPassword!,
-			regionName,
-			cityNames,
-			cancellationToken);
+		var result = await _geo.CreateSettlementsAsync(
+ 			actorUserId,
+ 			actorUserPassword!,
+ 			regionName,
+			settlementNames,
+ 			cancellationToken);
 
 		if(!result.IsSuccess)
 		{
@@ -119,8 +119,8 @@ public sealed class RegionsController : ControllerBase
 
 		var createdNames = result.Value!.Select(x => x.Name).ToList();
 		return Created(
-			$"/api/v1/regions/{Uri.EscapeDataString(regionName)}/cities",
-			new CreateCitiesResponse(createdNames));
+$"/api/v1/regions/{Uri.EscapeDataString(regionName)}/settlements",
+new CreateSettlementsResponse(createdNames));
 	}
 
 	[HttpPut("{regionName}")]
@@ -161,6 +161,7 @@ public sealed class RegionsController : ControllerBase
 		string regionName,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromQuery] string? targetRegionName,
 		CancellationToken cancellationToken)
 	{
 		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
@@ -168,54 +169,23 @@ public sealed class RegionsController : ControllerBase
 		{
 			return invalidActor;
 		}
-
 		var result = await _geo.DeleteRegionAsync(
 			actorUserId,
 			actorUserPassword!,
-			regionName,
+			new RegionDeleteModel(regionName, targetRegionName),
 			cancellationToken);
 
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
-	[HttpPut("{regionName}/cities/{cityName}")]
+	[HttpPost("{regionName}/restore")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-	public async Task<IActionResult> UpdateCity(
+	public async Task<IActionResult> RestoreRegion(
 		string regionName,
-		string cityName,
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromBody] UpdateCityRequest request,
-		CancellationToken cancellationToken)
-	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null)
-		{
-			return invalidActor;
-		}
-
-		var result = await _geo.UpdateCityAsync(
-			actorUserId,
-			actorUserPassword!,
-			new CityUpdateModel(regionName, cityName, request.Name),
-			cancellationToken);
-
-		return result.IsSuccess ? NoContent() : MapError(result.Error);
-	}
-
-	[HttpDelete("{regionName}/cities/{cityName}")]
-	[ProducesResponseType(StatusCodes.Status204NoContent)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-	public async Task<IActionResult> DeleteCity(
-		string regionName,
-		string cityName,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
@@ -226,13 +196,88 @@ public sealed class RegionsController : ControllerBase
 			return invalidActor;
 		}
 
-		var result = await _geo.DeleteCityAsync(
+		var result = await _geo.RestoreRegionAsync(actorUserId, actorUserPassword!, regionName, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapError(result.Error);
+	}
+
+	[HttpPut("{regionName}/settlements/{settlementName}")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> UpdateSettlement(
+ 		string regionName,
+		string settlementName,
+ 		[FromQuery] Guid actorUserId,
+ 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromBody] UpdateSettlementRequest request,
+ 		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var result = await _geo.UpdateSettlementAsync(
 			actorUserId,
 			actorUserPassword!,
-			regionName,
-			cityName,
+			new SettlementUpdateModel(regionName, settlementName, request.Name),
 			cancellationToken);
 
+		return result.IsSuccess ? NoContent() : MapError(result.Error);
+	}
+
+	[HttpDelete("{regionName}/settlements/{settlementName}")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> DeleteSettlement(
+ 		string regionName,
+		string settlementName,
+ 		[FromQuery] Guid actorUserId,
+ 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+ 		[FromQuery] string? targetRegionName,
+		[FromQuery] string? targetSettlementName,
+ 		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+		var result = await _geo.DeleteSettlementAsync(
+			actorUserId,
+			actorUserPassword!,
+			new SettlementDeleteModel(regionName, settlementName, targetRegionName, targetSettlementName),
+			cancellationToken);
+
+		return result.IsSuccess ? NoContent() : MapError(result.Error);
+	}
+
+	[HttpPost("{regionName}/settlements/{settlementName}/restore")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> RestoreSettlement(
+ 		string regionName,
+		string settlementName,
+ 		[FromQuery] Guid actorUserId,
+ 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+ 		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var result = await _geo.RestoreSettlementAsync(actorUserId, actorUserPassword!, regionName, settlementName, cancellationToken);
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
@@ -258,7 +303,7 @@ public sealed class RegionsController : ControllerBase
 		return this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors);
 	}
 
-	private static bool TryExtractCityNames(JsonElement request, out List<string> names)
+	private static bool TryExtractSettlementNames(JsonElement request, out List<string> names)
 	{
 		names = new List<string>();
 
@@ -334,10 +379,10 @@ public sealed class RegionsController : ControllerBase
 				StatusCodes.Status404NotFound,
 				ApiErrorCodes.GeoRegionNotFound,
 				"Регион не найден."),
-			GeoMutationError.CityNotFound => this.ProblemWithCode(
-				StatusCodes.Status404NotFound,
-				ApiErrorCodes.GeoCityNotFound,
-				"Город не найден."),
+			GeoMutationError.SettlementNotFound => this.ProblemWithCode(
+ 				StatusCodes.Status404NotFound,
+				ApiErrorCodes.GeoSettlementNotFound,
+				"Населённый пункт не найден."),
 			GeoMutationError.Duplicate => this.ProblemWithCode(
 				StatusCodes.Status409Conflict,
 				ApiErrorCodes.GeoDuplicate,
@@ -348,6 +393,21 @@ public sealed class RegionsController : ControllerBase
 				ApiErrorCodes.GeoInUse,
 				"Объект используется.",
 				"Нельзя удалить объект, пока на него ссылаются другие данные."),
+			GeoMutationError.ValidationFailed => this.ProblemWithCode(
+				StatusCodes.Status400BadRequest,
+				ApiErrorCodes.ValidationFailed,
+				"Некорректный запрос.",
+				"Проверьте параметры миграции. Для населённого пункта targetRegionName и targetSettlementName должны быть указаны вместе, а целевой объект не должен совпадать с удаляемым."),
+			GeoMutationError.HasActiveSettlements => this.ProblemWithCode(
+ 				StatusCodes.Status409Conflict,
+				ApiErrorCodes.GeoHasActiveSettlements,
+				"Регион содержит активные населённые пункты.",
+				"Нельзя удалить регион, пока в нём остаётся хотя бы один населённый пункт с IsDeleted = false."),
+			GeoMutationError.ParentRegionDeleted => this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.GeoParentRegionDeleted,
+				"Операция запрещена.",
+				"Нельзя востановить населённый пункт, пока его регион является удалённым."),
 			_ => this.ProblemWithCode(
 				StatusCodes.Status500InternalServerError,
 				ApiErrorCodes.InternalError,

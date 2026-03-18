@@ -9,7 +9,7 @@ public enum TaskOperationError
 	TaskAccessDenied,
 	TaskNotFound,
 	RegionNotFound,
-	CityRegionMismatch,
+	SettlementRegionMismatch,
 	TaskClosed,
 	TaskAutoVerificationNotSupported,
 	AlreadySubmitted,

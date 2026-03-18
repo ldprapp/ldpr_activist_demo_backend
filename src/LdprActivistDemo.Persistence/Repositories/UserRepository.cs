@@ -21,7 +21,7 @@ public sealed class UserRepository : IUserRepository
 	{
 		var u = await _db.Users.AsNoTracking()
 			.Include(x => x.Region)
-			.Include(x => x.City)
+			.Include(x => x.Settlement)
 			.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		return u is null ? null : ToInternal(u);
 	}
@@ -30,7 +30,7 @@ public sealed class UserRepository : IUserRepository
 	{
 		var u = await _db.Users.AsNoTracking()
 			.Include(x => x.Region)
-			.Include(x => x.City)
+			.Include(x => x.Settlement)
 			.FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
 		return u is null ? null : ToInternal(u);
 	}
@@ -39,7 +39,7 @@ public sealed class UserRepository : IUserRepository
 	{
 		var u = await _db.Users.AsNoTracking()
 			.Include(x => x.Region)
-			.Include(x => x.City)
+			.Include(x => x.Settlement)
 			.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
 		return u is null ? null : ToPublic(u);
 	}
@@ -48,7 +48,7 @@ public sealed class UserRepository : IUserRepository
 	{
 		var u = await _db.Users.AsNoTracking()
 			.Include(x => x.Region)
-			.Include(x => x.City)
+			.Include(x => x.Settlement)
 			.FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
 		return u is null ? null : ToPublic(u);
 	}
@@ -107,10 +107,10 @@ public sealed class UserRepository : IUserRepository
 	{
 		var gender = NormalizeGenderOrThrow(model.Gender);
 
-		var geo = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
+		var geo = await ResolveRegionSettlementAsync(model.RegionName, model.SettlementName, cancellationToken);
 		if(!geo.IsSuccess)
 		{
-			throw new InvalidOperationException("City does not belong to Region or does not exist.");
+			throw new InvalidOperationException("Settlement does not belong to Region or does not exist.");
 		}
 
 		var exists = await _db.Users.AsNoTracking()
@@ -133,7 +133,7 @@ public sealed class UserRepository : IUserRepository
 			PasswordHash = _passwordHasher.Hash(model.Password),
 			BirthDate = model.BirthDate,
 			RegionId = geo.RegionId,
-			CityId = geo.CityId,
+			SettlementId = geo.SettlementId,
 			Role = UserRoles.Activist,
 			IsPhoneConfirmed = false,
 			AvatarImageUrl = null,
@@ -244,10 +244,10 @@ public sealed class UserRepository : IUserRepository
 		Guid? newAvatarId = hadAvatar ? previousAvatarId : (Guid?)null;
 		var avatarChanged = false;
 
-		var geo = await ResolveRegionCityAsync(model.RegionName, model.CityName, cancellationToken);
+		var geo = await ResolveRegionSettlementAsync(model.RegionName, model.SettlementName, cancellationToken);
 		if(!geo.IsSuccess)
 		{
-			throw new InvalidOperationException("City does not belong to Region or does not exist.");
+			throw new InvalidOperationException("Settlement does not belong to Region or does not exist.");
 		}
 
 		u.LastName = model.LastName;
@@ -256,7 +256,7 @@ public sealed class UserRepository : IUserRepository
 		u.Gender = NormalizeGenderOrThrow(model.Gender);
 		u.BirthDate = model.BirthDate;
 		u.RegionId = geo.RegionId;
-		u.CityId = geo.CityId;
+		u.SettlementId = geo.SettlementId;
 
 		if(model.AvatarImageId.HasValue)
 		{
@@ -304,13 +304,13 @@ public sealed class UserRepository : IUserRepository
 	}
 
 	public Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken) =>
-		GetByFiltersAsync(role: null, regionName: regionName, cityName: null, cancellationToken);
+		GetByFiltersAsync(role: null, regionName: regionName, settlementName: null, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken) =>
-		GetByFiltersAsync(role: null, regionName: null, cityName: cityName, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetBySettlementAsync(string settlementName, CancellationToken cancellationToken) =>
+		GetByFiltersAsync(role: null, regionName: null, settlementName: settlementName, cancellationToken);
 
-	public Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken) =>
-		GetByFiltersAsync(role: null, regionName: regionName, cityName: cityName, cancellationToken);
+	public Task<IReadOnlyList<UserPublicModel>> GetByRegionAndSettlementAsync(string regionName, string settlementName, CancellationToken cancellationToken) =>
+		GetByFiltersAsync(role: null, regionName: regionName, settlementName: settlementName, cancellationToken);
 
 	public async Task<bool> SetRoleAsync(Guid userId, string role, CancellationToken cancellationToken)
 	{
@@ -351,7 +351,7 @@ public sealed class UserRepository : IUserRepository
 	public async Task<IReadOnlyList<UserPublicModel>> GetByFiltersAsync(
 		string? role,
 		string? regionName,
-		string? cityName,
+		string? settlementName,
 		CancellationToken cancellationToken)
 	{
 		IQueryable<User> query = _db.Users.AsNoTracking()
@@ -375,10 +375,10 @@ public sealed class UserRepository : IUserRepository
 			query = query.Where(x => x.Region.Name.ToLower() == regionKey);
 		}
 
-		if(!string.IsNullOrWhiteSpace(cityName))
+		if(!string.IsNullOrWhiteSpace(settlementName))
 		{
-			var cityKey = NormalizeName(cityName).ToLowerInvariant();
-			query = query.Where(x => x.City.Name.ToLower() == cityKey);
+			var settlementKey = NormalizeName(settlementName).ToLowerInvariant();
+			query = query.Where(x => x.Settlement.Name.ToLower() == settlementKey);
 		}
 
 		return await query
@@ -391,7 +391,7 @@ public sealed class UserRepository : IUserRepository
 			   u.PhoneNumber,
 			   u.BirthDate,
 			   u.Region.Name,
-			   u.City.Name,
+			   u.Settlement.Name,
 			   u.Role,
 			   u.IsPhoneConfirmed,
 			   u.AvatarImageUrl))
@@ -452,7 +452,7 @@ public sealed class UserRepository : IUserRepository
 			u.PasswordHash,
 			u.BirthDate,
 			u.Region.Name,
-			u.City.Name,
+			u.Settlement.Name,
 			u.Role,
 			u.IsPhoneConfirmed,
 			u.AvatarImageUrl);
@@ -467,27 +467,27 @@ public sealed class UserRepository : IUserRepository
 			u.PhoneNumber,
 			u.BirthDate,
 			u.Region.Name,
-			u.City.Name,
+			u.Settlement.Name,
 			u.Role,
 			u.IsPhoneConfirmed,
 			u.AvatarImageUrl);
 
-	private async Task<(bool IsSuccess, int RegionId, int CityId)> ResolveRegionCityAsync(
+	private async Task<(bool IsSuccess, int RegionId, int SettlementId)> ResolveRegionSettlementAsync(
 		string regionName,
-		string cityName,
+		string settlementName,
 		CancellationToken cancellationToken)
 	{
 		var regionKey = NormalizeName(regionName).ToLowerInvariant();
-		var cityKey = NormalizeName(cityName).ToLowerInvariant();
+		var settlementKey = NormalizeName(settlementName).ToLowerInvariant();
 
-		var city = await _db.Cities.AsNoTracking()
-			.Where(x => x.Region.Name.ToLower() == regionKey && x.Name.ToLower() == cityKey)
+		var settlement = await _db.Settlements.AsNoTracking()
+			.Where(x => x.Region.Name.ToLower() == regionKey && x.Name.ToLower() == settlementKey && !x.Region.IsDeleted && !x.IsDeleted)
 			.Select(x => new { x.RegionId, x.Id })
 			.FirstOrDefaultAsync(cancellationToken);
 
-		return city is null
+		return settlement is null
 			? (false, 0, 0)
-			: (true, city.RegionId, city.Id);
+			: (true, settlement.RegionId, settlement.Id);
 	}
 
 	private static string NormalizeName(string? value)

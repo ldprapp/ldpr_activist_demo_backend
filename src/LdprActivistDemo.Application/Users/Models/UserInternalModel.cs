@@ -10,7 +10,7 @@ public sealed record UserInternalModel(
 	string PasswordHash,
 	DateOnly BirthDate,
 	string RegionName,
-	string CityName,
+	string SettlementName,
 	string Role,
 	bool IsPhoneConfirmed,
 	string? AvatarImageUrl);

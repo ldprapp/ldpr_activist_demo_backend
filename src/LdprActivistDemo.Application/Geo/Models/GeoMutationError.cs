@@ -7,6 +7,9 @@ public enum GeoMutationError
 	InvalidName = 2,
 	RegionNotFound = 3,
 	Duplicate = 4,
-	CityNotFound = 5,
+	SettlementNotFound = 5,
 	InUse = 6,
+	ValidationFailed = 7,
+	HasActiveSettlements = 8,
+	ParentRegionDeleted = 9,
 }

@@ -247,7 +247,7 @@ public sealed class TasksController : ControllerBase
 			publishedAt,
 			request.DeadlineAt,
 			request.RegionName,
-			request.CityName,
+			request.SettlementName,
 			request.TrustedCoordinatorIds?.ToArray() ?? Array.Empty<Guid>(),
 			verificationType,
 			reuseType,
@@ -376,7 +376,7 @@ public sealed class TasksController : ControllerBase
 			publishedAt,
 			request.DeadlineAt,
 			request.RegionName,
-			request.CityName,
+			request.SettlementName,
 			request.TrustedCoordinatorIds?.ToArray() ?? Array.Empty<Guid>(),
 			verificationType,
 			reuseType,
@@ -476,7 +476,7 @@ public sealed class TasksController : ControllerBase
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromQuery] bool onlyMine = true,
 		[FromQuery] string? regionName = null,
-		[FromQuery] string? cityName = null,
+		[FromQuery] string? settlementName = null,
 		[FromQuery] string? status = null,
 		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
 		[FromQuery] bool includeExpiredDeadlines = false,
@@ -496,7 +496,7 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
-		var invalidFilters = TryBuildFeedFilterValidationProblem(regionName, cityName);
+		var invalidFilters = TryBuildFeedFilterValidationProblem(regionName, settlementName);
 		if(invalidFilters is not null)
 		{
 			return invalidFilters;
@@ -534,9 +534,9 @@ public sealed class TasksController : ControllerBase
 		}
 		else if(!string.IsNullOrWhiteSpace(regionName))
 		{
-			tasks = string.IsNullOrWhiteSpace(cityName)
-				? await _tasks.GetByRegionAsync(regionName!, cancellationToken)
-				: await _tasks.GetByRegionAndCityAsync(regionName!, cityName!, cancellationToken);
+			tasks = string.IsNullOrWhiteSpace(settlementName)
+ 				? await _tasks.GetByRegionAsync(regionName!, cancellationToken)
+				: await _tasks.GetByRegionAndSettlementAsync(regionName!, settlementName!, cancellationToken);
 		}
 		else
 		{
@@ -559,11 +559,11 @@ public sealed class TasksController : ControllerBase
 
 		if(!string.IsNullOrWhiteSpace(regionName))
 		{
-			filtered = string.IsNullOrWhiteSpace(cityName)
-				? filtered.Where(t => string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase))
-				: filtered.Where(t =>
-					string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase)
-					&& string.Equals(t.CityName, cityName, StringComparison.OrdinalIgnoreCase));
+			filtered = string.IsNullOrWhiteSpace(settlementName)
+ 				? filtered.Where(t => string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase))
+ 				: filtered.Where(t =>
+ 					string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase)
+					&& string.Equals(t.SettlementName, settlementName, StringComparison.OrdinalIgnoreCase));
 		}
 
 		if(normalizedStatusFilter is not null)
@@ -1031,7 +1031,7 @@ public sealed class TasksController : ControllerBase
 		public string? ExecutionLocation { get; set; }
 		public DateTimeOffset? DeadlineAt { get; set; }
 		public string RegionName { get; set; } = string.Empty;
-		public string? CityName { get; set; }
+		public string? SettlementName { get; set; }
 		public List<Guid>? TrustedCoordinatorIds { get; set; }
 	}
 
@@ -1050,7 +1050,7 @@ public sealed class TasksController : ControllerBase
 		public string? ExecutionLocation { get; set; }
 		public DateTimeOffset? DeadlineAt { get; set; }
 		public string RegionName { get; set; } = string.Empty;
-		public string? CityName { get; set; }
+		public string? SettlementName { get; set; }
 		public List<Guid>? TrustedCoordinatorIds { get; set; }
 	}
 
@@ -1101,7 +1101,7 @@ public sealed class TasksController : ControllerBase
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
 		=> this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
 
-	private IActionResult? TryBuildFeedFilterValidationProblem(string? regionName, string? cityName)
+	private IActionResult? TryBuildFeedFilterValidationProblem(string? regionName, string? settlementName)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
@@ -1110,23 +1110,23 @@ public sealed class TasksController : ControllerBase
 			errors["regionName"] = new[] { "RegionName must not be empty." };
 		}
 
-		if(cityName is not null)
+		if(settlementName is not null)
 		{
 			var list = new List<string>();
 
-			if(string.IsNullOrWhiteSpace(cityName))
+			if(string.IsNullOrWhiteSpace(settlementName))
 			{
-				list.Add("CityName must not be empty.");
+				list.Add("SettlementName must not be empty.");
 			}
 
 			if(string.IsNullOrWhiteSpace(regionName))
 			{
-				list.Add("cityName can be used only together with regionName.");
+				list.Add("settlementName can be used only together with regionName.");
 			}
 
 			if(list.Count > 0)
 			{
-				errors["cityName"] = list.ToArray();
+				errors["settlementName"] = list.ToArray();
 			}
 		}
 
@@ -1136,7 +1136,7 @@ public sealed class TasksController : ControllerBase
 				ApiErrorCodes.ValidationFailed,
 				errors,
 				title: "Некорректный запрос.",
-				detail: "Проверьте параметры regionName и cityName (cityName допускается только вместе с regionName).");
+			   detail: "Проверьте параметры regionName и settlementName (settlementName допускается только вместе с regionName).");
 	}
 
 	private IActionResult? TryBuildFeedPaginationValidationProblem(int? start, int? end)
@@ -1571,7 +1571,7 @@ public sealed class TasksController : ControllerBase
 			TaskOperationError.TaskAccessDenied => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.TaskAccessDenied, "Нет доступа.", "Задача недоступна пользователю или операция запрещена для текущей роли."),
 			TaskOperationError.TaskNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskNotFound, "Задача не найдена."),
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),
-			TaskOperationError.CityRegionMismatch => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Город не принадлежит региону.", "Указанный город должен относиться к указанному региону."),
+			TaskOperationError.SettlementRegionMismatch => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.SettlementRegionMismatch, "Населённый пункт не принадлежит региону.", "Указанный населённый пункт должен относиться к указанному региону."),
 			TaskOperationError.TaskClosed => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskClosed, "Задача закрыта.", "Операция недоступна для закрытой задачи."),
 			TaskOperationError.TaskAutoVerificationNotSupported => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAutoVerificationNotSupported, "Операция недоступна.", "Операции отправки/изменения/удаления заявки и ручной модерации недоступны для задач с VerificationType='auto'."),
 			TaskOperationError.AlreadySubmitted => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.TaskAlreadySubmitted, "Заявка уже подтверждена.", "Нельзя изменять подтверждённую заявку."),
@@ -1595,7 +1595,7 @@ public sealed class TasksController : ControllerBase
 			t.DeadlineAt,
 			NormalizeTaskStatusForContract(t),
 			t.RegionName,
-			t.CityName,
+			t.SettlementName,
 			t.TrustedCoordinatorIds,
 			t.VerificationType,
 			t.ReuseType,

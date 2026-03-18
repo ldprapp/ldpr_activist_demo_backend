@@ -28,9 +28,9 @@ public interface IUserRepository
 	Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, CancellationToken cancellationToken);
 
 	Task<IReadOnlyList<UserPublicModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetByFiltersAsync(string? role, string? regionName, string? cityName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetBySettlementAsync(string settlementName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetByRegionAndSettlementAsync(string regionName, string settlementName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetByFiltersAsync(string? role, string? regionName, string? settlementName, CancellationToken cancellationToken);
 	Task<bool> SetRoleAsync(Guid userId, string role, CancellationToken cancellationToken);
 	Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken);
 

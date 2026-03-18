@@ -12,7 +12,7 @@ public sealed record UpdateTaskRequest(
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
 	[Required] string RegionName,
-	string? CityName,
+	string? SettlementName,
 	IReadOnlyList<Guid>? TrustedCoordinatorIds,
 	string? VerificationType = null,
 	string? ReuseType = null,

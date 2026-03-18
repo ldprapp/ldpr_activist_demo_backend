@@ -16,16 +16,18 @@ public static class ApiErrorCodes
 	public const string UserNotFound = "user_not_found";
 	public const string PhoneAlreadyExists = "phone_already_exists";
 	public const string GenderInvalid = "gender_invalid";
-	public const string CityRegionMismatch = "city_region_mismatch";
+	public const string SettlementRegionMismatch = "settlement_region_mismatch";
 	public const string UserRoleChangeNotAllowed = "user_role_change_not_allowed";
 	public const string PhoneChangeNotAllowed = "phone_change_not_allowed";
 
 	public const string GeoRegionNotFound = "geo_region_not_found";
-	public const string GeoCityNotFound = "geo_city_not_found";
+	public const string GeoSettlementNotFound = "geo_settlement_not_found";
 	public const string GeoDuplicate = "geo_duplicate";
 	public const string GeoInvalidName = "geo_invalid_name";
 	public const string GeoUnauthorized = "geo_unauthorized";
 	public const string GeoInUse = "geo_in_use";
+	public const string GeoHasActiveSettlements = "geo_has_active_settlements";
+	public const string GeoParentRegionDeleted = "geo_parent_region_deleted";
 
 	public const string Forbidden = "forbidden";
 	public const string TaskNotFound = "task_not_found";

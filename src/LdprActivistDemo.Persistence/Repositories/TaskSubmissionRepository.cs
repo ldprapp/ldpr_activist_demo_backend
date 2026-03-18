@@ -56,7 +56,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var geoOk = task.RegionId == user.RegionId
-			&& (task.CityId is null || user.CityId == task.CityId.Value);
+			&& (task.SettlementId is null || user.SettlementId == task.SettlementId.Value);
 		if(!geoOk)
 		{
 			_logger.LogWarning("SubmitTask rejected: task is not accessible by geo. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
@@ -388,13 +388,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.PhoneNumber,
 					u.BirthDate,
 					RegionName = u.Region.Name,
-					CityName = u.City.Name,
+					SettlementName = u.Settlement.Name,
 					u.Role,
 					u.IsPhoneConfirmed,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.Role, x.IsPhoneConfirmed, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.SettlementName, x.Role, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);
 	}
@@ -426,13 +426,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					u.PhoneNumber,
 					u.BirthDate,
 					RegionName = u.Region.Name,
-					CityName = u.City.Name,
+					SettlementName = u.Settlement.Name,
 					u.Role,
 					u.IsPhoneConfirmed,
 					u.AvatarImageUrl,
 				})
 			.OrderBy(x => x.LastName).ThenBy(x => x.FirstName).ThenBy(x => x.MiddleName)
-			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.CityName, x.Role, x.IsPhoneConfirmed, x.AvatarImageUrl))
+			.Select(x => new UserPublicModel(x.Id, x.LastName, x.FirstName, x.MiddleName, x.Gender, x.PhoneNumber, x.BirthDate, x.RegionName, x.SettlementName, x.Role, x.IsPhoneConfirmed, x.AvatarImageUrl))
 			.ToListAsync(cancellationToken);
 
 		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(list);

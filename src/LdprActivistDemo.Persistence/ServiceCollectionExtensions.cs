@@ -37,7 +37,7 @@ public static class ServiceCollectionExtensions
 		}
 
 		services.AddScoped<IRegionRepository, RegionRepository>();
-		services.AddScoped<ICityRepository, CityRepository>();
+		services.AddScoped<ISettlementRepository, SettlementRepository>();
 		services.AddScoped<IUserRepository, UserRepository>();
 		services.AddScoped<LdprActivistDemo.Application.UserPoints.IUserPointsTransactionRepository, UserPointsTransactionRepository>();
 		services.AddScoped<IPasswordResetRepository, PasswordResetRepository>();

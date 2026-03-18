@@ -14,9 +14,9 @@ public interface IUserService
 	Task<bool> ChangePhoneAsync(Guid userId, string newPhoneNumber, string otpCode, CancellationToken cancellationToken);
 	Task<bool> SetAvatarImageAsync(Guid userId, Guid? avatarImageId, CancellationToken cancellationToken);
 	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAsync(string regionName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetUsersByCityAsync(string cityName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken);
-	Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? cityName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetUsersBySettlementAsync(string settlementName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetUsersByRegionAndSettlementAsync(string regionName, string settlementName, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? settlementName, CancellationToken cancellationToken);
 	Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken);
 	Task<UserRoleChangeResult> SetCoordinatorRoleAsync(Guid actorUserId, string actorUserPassword, Guid targetUserId, bool isCoordinator, CancellationToken cancellationToken);
 }

@@ -73,14 +73,14 @@ public sealed class TaskService : ITaskService
 	public Task<TaskOperationResult<TaskModel>> GetPublicAsync(Guid taskId, CancellationToken cancellationToken)
 		=> _tasks.GetPublicAsync(taskId, cancellationToken);
 
-	public Task<IReadOnlyList<TaskModel>> GetByRegionAndCityAsync(string regionName, string cityName, CancellationToken cancellationToken)
-		=> _tasks.GetByRegionAndCityAsync(regionName, cityName, cancellationToken);
+	public Task<IReadOnlyList<TaskModel>> GetByRegionAndSettlementAsync(string regionName, string settlementName, CancellationToken cancellationToken)
+		=> _tasks.GetByRegionAndSettlementAsync(regionName, settlementName, cancellationToken);
 
 	public Task<IReadOnlyList<TaskModel>> GetByRegionAsync(string regionName, CancellationToken cancellationToken)
 		=> _tasks.GetByRegionAsync(regionName, cancellationToken);
 
-	public Task<IReadOnlyList<TaskModel>> GetByCityAsync(string cityName, CancellationToken cancellationToken)
-		=> _tasks.GetByCityAsync(cityName, cancellationToken); public Task<IReadOnlyList<TaskModel>> GetByCoordinatorAsync(Guid coordinatorUserId, CancellationToken cancellationToken)
+	public Task<IReadOnlyList<TaskModel>> GetBySettlementAsync(string settlementName, CancellationToken cancellationToken)
+		=> _tasks.GetBySettlementAsync(settlementName, cancellationToken); public Task<IReadOnlyList<TaskModel>> GetByCoordinatorAsync(Guid coordinatorUserId, CancellationToken cancellationToken)
 		=> _tasks.GetByCoordinatorAsync(coordinatorUserId, cancellationToken);
 
 	public Task<TaskOperationResult<IReadOnlyList<TaskModel>>> GetAvailableForUserAsync(Guid userId, CancellationToken cancellationToken)

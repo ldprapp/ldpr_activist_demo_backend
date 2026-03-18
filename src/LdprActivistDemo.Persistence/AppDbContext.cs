@@ -15,12 +15,13 @@ public sealed class AppDbContext : DbContext
 	}
 
 	public DbSet<Region> Regions => Set<Region>();
-	public DbSet<City> Cities => Set<City>();
+	public DbSet<Settlement> Settlements => Set<Settlement>();
 	public DbSet<User> Users => Set<User>();
 	public DbSet<UserPointsTransaction> UserPointsTransactions => Set<UserPointsTransaction>();
-
 	public DbSet<SystemImageEntity> SystemImages => Set<SystemImageEntity>();
-	public DbSet<TaskEntity> Tasks => Set<TaskEntity>(); public DbSet<TaskTrustedCoordinator> TaskTrustedCoordinators => Set<TaskTrustedCoordinator>();
+
+	public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
+	public DbSet<TaskTrustedCoordinator> TaskTrustedCoordinators => Set<TaskTrustedCoordinator>();
 	public DbSet<TaskSubmission> TaskSubmissions => Set<TaskSubmission>();
 	public DbSet<TaskSubmissionImage> TaskSubmissionImages => Set<TaskSubmissionImage>();
 	public DbSet<ImageEntity> Images => Set<ImageEntity>();
@@ -48,10 +49,9 @@ public sealed class AppDbContext : DbContext
 		{
 			b.ToTable("system_images");
 			b.HasKey(x => x.Id);
-			b.Property(x => x.Name).IsRequired();
 			b.Property(x => x.ImageId).IsRequired();
+			b.Property(x => x.Name).IsRequired();
 			b.HasIndex(x => x.Name).IsUnique();
-			b.HasIndex(x => x.ImageId).IsUnique();
 
 			b.HasOne(x => x.Image)
 				.WithMany()
@@ -67,14 +67,17 @@ public sealed class AppDbContext : DbContext
 			b.HasIndex(x => x.Name).IsUnique();
 		});
 
-		modelBuilder.Entity<City>(b =>
+		modelBuilder.Entity<Settlement>(b =>
 		{
-			b.ToTable("cities");
+			b.ToTable("settlements");
 			b.HasKey(x => x.Id);
 			b.Property(x => x.Name).IsRequired();
+			b.Property(x => x.IsDeleted)
+				.IsRequired()
+				.HasDefaultValue(false);
 
 			b.HasOne(x => x.Region)
-				.WithMany(r => r.Cities)
+				.WithMany(r => r.Settlements)
 				.HasForeignKey(x => x.RegionId)
 				.OnDelete(DeleteBehavior.Cascade);
 
@@ -113,9 +116,9 @@ public sealed class AppDbContext : DbContext
 				.HasForeignKey(x => x.RegionId)
 				.OnDelete(DeleteBehavior.Restrict);
 
-			b.HasOne(x => x.City)
+			b.HasOne(x => x.Settlement)
 				.WithMany()
-				.HasForeignKey(x => x.CityId)
+				.HasForeignKey(x => x.SettlementId)
 				.OnDelete(DeleteBehavior.Restrict);
 		});
 
@@ -211,12 +214,12 @@ public sealed class AppDbContext : DbContext
 				.HasForeignKey(x => x.RegionId)
 				.OnDelete(DeleteBehavior.Restrict);
 
-			b.HasOne(x => x.City)
+			b.HasOne(x => x.Settlement)
 				.WithMany()
-				.HasForeignKey(x => x.CityId)
+				.HasForeignKey(x => x.SettlementId)
 				.OnDelete(DeleteBehavior.Restrict);
 
-			b.HasIndex(x => new { x.RegionId, x.CityId, x.Status, x.DeadlineAt });
+			b.HasIndex(x => new { x.RegionId, x.SettlementId, x.Status, x.DeadlineAt });
 		}); modelBuilder.Entity<TaskTrustedCoordinator>(b =>
 		{
 			b.ToTable("task_trusted_coordinators");

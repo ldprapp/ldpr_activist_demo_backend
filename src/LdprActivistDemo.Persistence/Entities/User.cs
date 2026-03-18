@@ -24,9 +24,9 @@ public sealed class User
 
 	public Region Region { get; set; } = null!;
 
-	public int CityId { get; set; }
+	public int SettlementId { get; set; }
 
-	public City City { get; set; } = null!;
+	public Settlement Settlement { get; set; } = null!;
 
 	public string Role { get; set; } = UserRoles.Activist;
 

@@ -73,7 +73,7 @@ public sealed class UsersController : ControllerBase
 					Password: request.Password,
 					BirthDate: request.BirthDate,
 					RegionName: request.RegionName,
-					CityName: request.CityName,
+					SettlementName: request.SettlementName,
 					AvatarImageId: null),
 				cancellationToken);
 
@@ -90,9 +90,9 @@ public sealed class UsersController : ControllerBase
 		{
 			return this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.PhoneAlreadyExists, "Телефон уже занят.", "Пользователь с таким номером телефона уже существует.");
 		}
-		catch(InvalidOperationException ex) when(IsCityMismatch(ex))
+		catch(InvalidOperationException ex) when(IsSettlementMismatch(ex))
 		{
-			return this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Некорректный город/регион.", "Указанный город не принадлежит региону или не существует.");
+			return this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.SettlementRegionMismatch, "Некорректный населённый пункт/регион.", "Указанный населённый пункт не принадлежит региону или не существует.");
 		}
 		catch(InvalidOperationException ex) when(IsGenderInvalid(ex))
 		{
@@ -581,7 +581,7 @@ public sealed class UsersController : ControllerBase
 					Gender: request.Gender,
 					BirthDate: request.BirthDate,
 					RegionName: request.RegionName,
-					CityName: request.CityName,
+					SettlementName: request.SettlementName,
 					AvatarImageId: avatarImageId),
 				cancellationToken);
 
@@ -592,9 +592,9 @@ public sealed class UsersController : ControllerBase
 
 			return NoContent();
 		}
-		catch(InvalidOperationException ex) when(IsCityMismatch(ex))
+		catch(InvalidOperationException ex) when(IsSettlementMismatch(ex))
 		{
-			return this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.CityRegionMismatch, "Некорректный город/регион.", "Указанный город не принадлежит региону или не существует.");
+			return this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.SettlementRegionMismatch, "Некорректный населённый пункт/регион.", "Указанный населённый пункт не принадлежит региону или не существует.");
 		}
 		catch(InvalidOperationException ex) when(IsGenderInvalid(ex))
 		{
@@ -687,12 +687,12 @@ public sealed class UsersController : ControllerBase
 	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetFeed(
 		[FromQuery] string? role,
 		[FromQuery] string? regionName,
-		[FromQuery] string? cityName,
+		[FromQuery] string? settlementName,
 		[FromQuery] int? start,
 		[FromQuery] int? end,
 		CancellationToken cancellationToken)
 	{
-		var invalidFilters = TryBuildUsersFeedFilterValidationProblem(role, regionName, cityName);
+		var invalidFilters = TryBuildUsersFeedFilterValidationProblem(role, regionName, settlementName);
 		if(invalidFilters is not null)
 		{
 			return invalidFilters;
@@ -706,7 +706,7 @@ public sealed class UsersController : ControllerBase
 
 		UserRoleRules.TryNormalizeOptionalRole(role, out var normalizedRole, out _);
 
-		var users = await _users.GetUsersAsync(normalizedRole, regionName, cityName, cancellationToken);
+		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, cancellationToken);
 		var dtos = users.Select(ToDto).ToList();
 		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
@@ -780,14 +780,14 @@ public sealed class UsersController : ControllerBase
 			u.PhoneNumber,
 			u.BirthDate,
 			u.RegionName,
-			u.CityName,
+			u.SettlementName,
 			u.Role,
 			u.IsPhoneConfirmed)
 	{
 		AvatarImageUrl = u.AvatarImageUrl,
 	};
 
-	private ActionResult? TryBuildUsersFeedFilterValidationProblem(string? role, string? regionName, string? cityName)
+	private ActionResult? TryBuildUsersFeedFilterValidationProblem(string? role, string? regionName, string? settlementName)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
@@ -801,27 +801,27 @@ public sealed class UsersController : ControllerBase
 			errors["regionName"] = new[] { "RegionName must not be empty." };
 		}
 
-		if(cityName is not null)
+		if(settlementName is not null)
 		{
 			var list = new List<string>();
 
-			if(string.IsNullOrWhiteSpace(cityName))
+			if(string.IsNullOrWhiteSpace(settlementName))
 			{
-				list.Add("CityName must not be empty.");
+				list.Add("SettlementName must not be empty.");
 			}
 
 			if(string.IsNullOrWhiteSpace(regionName))
 			{
-				list.Add("cityName can be used only together with regionName.");
+				list.Add("settlementName can be used only together with regionName.");
 			}
 
 			if(list.Count > 0)
 			{
-				errors["cityName"] = list.ToArray();
+				errors["settlementName"] = list.ToArray();
 			}
 		}
 
-		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail: $"Проверьте параметры role/regionName/cityName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Admin}', cityName допускается только вместе с regionName.");
+		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail: $"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Admin}', settlementName допускается только вместе с regionName.");
 	}
 
 
@@ -947,7 +947,7 @@ public sealed class UsersController : ControllerBase
 		public string Password { get; set; } = string.Empty;
 		public DateOnly BirthDate { get; set; }
 		public string RegionName { get; set; } = string.Empty;
-		public string CityName { get; set; } = string.Empty;
+		public string SettlementName { get; set; } = string.Empty;
 
 		public IFormFile? AvatarImage { get; set; }
 	}
@@ -960,7 +960,7 @@ public sealed class UsersController : ControllerBase
 		public string? Gender { get; set; }
 		public DateOnly BirthDate { get; set; }
 		public string RegionName { get; set; } = string.Empty;
-		public string CityName { get; set; } = string.Empty;
+		public string SettlementName { get; set; } = string.Empty;
 
 		public IFormFile? AvatarImage { get; set; }
 	}
@@ -975,7 +975,7 @@ public sealed class UsersController : ControllerBase
 		else if(!IsValidPhoneNumber(r.PhoneNumber)) errors[nameof(r.PhoneNumber)] = new[] { "PhoneNumber has invalid format." };
 		if(string.IsNullOrWhiteSpace(r.Password)) errors[nameof(r.Password)] = new[] { "Password is required." };
 		if(string.IsNullOrWhiteSpace(r.RegionName)) errors[nameof(r.RegionName)] = new[] { "RegionName is required." };
-		if(string.IsNullOrWhiteSpace(r.CityName)) errors[nameof(r.CityName)] = new[] { "CityName is required." };
+		if(string.IsNullOrWhiteSpace(r.SettlementName)) errors[nameof(r.SettlementName)] = new[] { "SettlementName is required." };
 
 		return errors;
 	}
@@ -1030,7 +1030,7 @@ public sealed class UsersController : ControllerBase
 		if(string.IsNullOrWhiteSpace(r.LastName)) errors[nameof(r.LastName)] = new[] { "LastName is required." };
 		if(string.IsNullOrWhiteSpace(r.FirstName)) errors[nameof(r.FirstName)] = new[] { "FirstName is required." };
 		if(string.IsNullOrWhiteSpace(r.RegionName)) errors[nameof(r.RegionName)] = new[] { "RegionName is required." };
-		if(string.IsNullOrWhiteSpace(r.CityName)) errors[nameof(r.CityName)] = new[] { "CityName is required." };
+		if(string.IsNullOrWhiteSpace(r.SettlementName)) errors[nameof(r.SettlementName)] = new[] { "SettlementName is required." };
 
 		return errors;
 	}
@@ -1038,8 +1038,8 @@ public sealed class UsersController : ControllerBase
 	private static bool IsPhoneDuplicate(InvalidOperationException ex) =>
 		ex.Message.Contains("PhoneNumber already exists", StringComparison.OrdinalIgnoreCase);
 
-	private static bool IsCityMismatch(InvalidOperationException ex) =>
-		ex.Message.Contains("City does not belong", StringComparison.OrdinalIgnoreCase);
+	private static bool IsSettlementMismatch(InvalidOperationException ex) =>
+		ex.Message.Contains("Settlement does not belong", StringComparison.OrdinalIgnoreCase);
 
 	private static bool IsGenderInvalid(InvalidOperationException ex) =>
 		ex.Message.Contains("Gender is invalid", StringComparison.OrdinalIgnoreCase);

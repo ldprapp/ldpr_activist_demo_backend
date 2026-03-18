@@ -12,7 +12,7 @@ public sealed record CreateTaskRequest(
 	DateTimeOffset PublishedAt,
 	DateTimeOffset? DeadlineAt,
 	[Required] string RegionName,
-	string? CityName,
+	string? SettlementName,
 	IReadOnlyList<Guid>? TrustedCoordinatorIds,
 	string VerificationType = TaskVerificationType.Manual,
 	string ReuseType = TaskReuseType.Disposable,

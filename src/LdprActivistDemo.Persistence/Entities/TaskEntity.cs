@@ -40,8 +40,8 @@ public sealed class TaskEntity
 
 	public Region Region { get; set; } = null!;
 
-	public int? CityId { get; set; }
+	public int? SettlementId { get; set; }
 
-	public City? City { get; set; }
+	public Settlement? Settlement { get; set; }
 	public List<TaskTrustedCoordinator> TrustedCoordinators { get; set; } = new();
 }

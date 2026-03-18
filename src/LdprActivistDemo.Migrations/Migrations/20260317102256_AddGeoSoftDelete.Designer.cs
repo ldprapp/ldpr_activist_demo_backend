@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260317102256_AddGeoSoftDelete")]
+    partial class AddGeoSoftDelete
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,6 +24,34 @@ namespace LdprActivistDemo.Migrations.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("LdprActivistDemo.Persistence.City", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("RegionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegionId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("cities", (string)null);
+                });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.ImageEntity", b =>
                 {
@@ -55,7 +86,9 @@ namespace LdprActivistDemo.Migrations.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -67,34 +100,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .IsUnique();
 
                     b.ToTable("regions", (string)null);
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.Settlement", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("IsDeleted")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("RegionId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RegionId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("settlements", (string)null);
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.SystemImageEntity", b =>
@@ -112,7 +117,8 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ImageId");
+                    b.HasIndex("ImageId")
+                        .IsUnique();
 
                     b.HasIndex("Name")
                         .IsUnique();
@@ -131,6 +137,9 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.Property<string>("AutoVerificationActionType")
                         .HasColumnType("text");
+
+                    b.Property<int?>("CityId")
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("CoverImageId")
                         .HasColumnType("uuid");
@@ -164,9 +173,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<int>("RewardPoints")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("SettlementId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -185,11 +191,11 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.HasIndex("AuthorUserId");
 
+                    b.HasIndex("CityId");
+
                     b.HasIndex("CoverImageId");
 
-                    b.HasIndex("SettlementId");
-
-                    b.HasIndex("RegionId", "SettlementId", "Status", "DeadlineAt");
+                    b.HasIndex("RegionId", "CityId", "Status", "DeadlineAt");
 
                     b.ToTable("tasks", null, t =>
                         {
@@ -291,6 +297,9 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<DateOnly>("BirthDate")
                         .HasColumnType("date");
 
+                    b.Property<int>("CityId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -325,17 +334,14 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .HasColumnType("text")
                         .HasDefaultValue("activist");
 
-                    b.Property<int>("SettlementId")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
+
+                    b.HasIndex("CityId");
 
                     b.HasIndex("PhoneNumber")
                         .IsUnique();
 
                     b.HasIndex("RegionId");
-
-                    b.HasIndex("SettlementId");
 
                     b.ToTable("users", null, t =>
                         {
@@ -381,6 +387,17 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.ToTable("user_points_transactions", (string)null);
                 });
 
+            modelBuilder.Entity("LdprActivistDemo.Persistence.City", b =>
+                {
+                    b.HasOne("LdprActivistDemo.Persistence.Region", "Region")
+                        .WithMany("Cities")
+                        .HasForeignKey("RegionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Region");
+                });
+
             modelBuilder.Entity("LdprActivistDemo.Persistence.ImageEntity", b =>
                 {
                     b.HasOne("LdprActivistDemo.Persistence.User", "OwnerUser")
@@ -390,17 +407,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .IsRequired();
 
                     b.Navigation("OwnerUser");
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.Settlement", b =>
-                {
-                    b.HasOne("LdprActivistDemo.Persistence.Region", "Region")
-                        .WithMany("Settlements")
-                        .HasForeignKey("RegionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Region");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.SystemImageEntity", b =>
@@ -422,6 +428,11 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("LdprActivistDemo.Persistence.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("LdprActivistDemo.Persistence.ImageEntity", null)
                         .WithMany()
                         .HasForeignKey("CoverImageId")
@@ -433,16 +444,11 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LdprActivistDemo.Persistence.Settlement", "Settlement")
-                        .WithMany()
-                        .HasForeignKey("SettlementId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("AuthorUser");
 
-                    b.Navigation("Region");
+                    b.Navigation("City");
 
-                    b.Navigation("Settlement");
+                    b.Navigation("Region");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskSubmission", b =>
@@ -511,21 +517,21 @@ namespace LdprActivistDemo.Migrations.Migrations
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.User", b =>
                 {
+                    b.HasOne("LdprActivistDemo.Persistence.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("LdprActivistDemo.Persistence.Region", "Region")
                         .WithMany()
                         .HasForeignKey("RegionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LdprActivistDemo.Persistence.Settlement", "Settlement")
-                        .WithMany()
-                        .HasForeignKey("SettlementId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.Navigation("City");
 
                     b.Navigation("Region");
-
-                    b.Navigation("Settlement");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.UserPointsTransaction", b =>
@@ -555,7 +561,7 @@ namespace LdprActivistDemo.Migrations.Migrations
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.Region", b =>
                 {
-                    b.Navigation("Settlements");
+                    b.Navigation("Cities");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.TaskEntity", b =>

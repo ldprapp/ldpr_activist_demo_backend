@@ -13,7 +13,7 @@ public sealed record TaskDto(
 	DateTimeOffset? DeadlineAt,
 	string Status,
 	string RegionName,
-	string? CityName,
+	string? SettlementName,
 	IReadOnlyList<Guid> TrustedCoordinatorIds,
 	string VerificationType = TaskVerificationType.Manual,
 	string ReuseType = TaskReuseType.Disposable,
