@@ -340,33 +340,6 @@ public sealed class TaskRepository : ITaskRepository
 		return TaskOperationResult.Success();
 	}
 
-	public async Task<TaskOperationResult> DeleteAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
-	{
-		var actorExists = await _db.Users.AsNoTracking()
-			.AnyAsync(x => x.Id == actorUserId, cancellationToken);
-		if(!actorExists)
-		{
-			_logger.LogWarning("DeleteTask rejected: actor not found. ActorUserId={ActorUserId}, TaskId={TaskId}.", actorUserId, taskId);
-			return TaskOperationResult.Fail(TaskOperationError.InvalidCredentials);
-		}
-
-		var task = await _db.Tasks.FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
-		if(task is null)
-		{
-			return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
-		}
-
-		if(task.AuthorUserId != actorUserId)
-		{
-			_logger.LogWarning("DeleteTask rejected: actor is not author. ActorUserId={ActorUserId}, TaskId={TaskId}, AuthorUserId={AuthorUserId}.", actorUserId, taskId, task.AuthorUserId);
-			return TaskOperationResult.Fail(TaskOperationError.Forbidden);
-		}
-
-		_db.Tasks.Remove(task);
-		await _db.SaveChangesAsync(cancellationToken);
-		return TaskOperationResult.Success();
-	}
-
 	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking()

@@ -386,28 +386,6 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
-	[HttpDelete("{taskId:guid}")]
-	[ProducesResponseType(StatusCodes.Status204NoContent)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> DeleteAsync(
-		[FromRoute] Guid taskId,
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		CancellationToken cancellationToken)
-	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-
-		if(invalidActor is not null)
-		{
-			return invalidActor;
-		}
-
-		var result = await _tasks.DeleteAsync(actorUserId, actorUserPassword!, taskId, cancellationToken);
-		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
-	}
-
 	[HttpPost("{taskId:guid}/close")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

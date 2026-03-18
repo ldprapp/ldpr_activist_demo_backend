@@ -41,14 +41,6 @@ public sealed class TaskService : ITaskService
 			: TaskOperationResult.Fail(authError.Value);
 	}
 
-	public async Task<TaskOperationResult> DeleteAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
-	{
-		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
-		return authError is null
-			? await _tasks.DeleteAsync(actorUserId, taskId, cancellationToken)
-			: TaskOperationResult.Fail(authError.Value);
-	}
-
 	public async Task<TaskOperationResult> OpenAsync(Guid actorUserId, string actorUserPassword, Guid taskId, CancellationToken cancellationToken)
 	{
 		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);

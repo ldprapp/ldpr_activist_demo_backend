@@ -6,7 +6,6 @@ public interface ITaskRepository
 {
 	Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, TaskCreateModel model, CancellationToken cancellationToken);
 	Task<TaskOperationResult> UpdateAsync(Guid actorUserId, Guid taskId, TaskUpdateModel model, CancellationToken cancellationToken);
-	Task<TaskOperationResult> DeleteAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult> OpenAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult> CloseAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskModel>> GetCoordinatorAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken);
