@@ -33,6 +33,12 @@ public sealed class UsersController : ControllerBase
 		_actorAccess = actorAccess ?? throw new ArgumentNullException(nameof(actorAccess));
 	}
 
+	public enum UserFeedResponseFormat
+	{
+		Users = 0,
+		Count = 1,
+	}
+
 	[HttpPost("register")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(UserIdResponse), StatusCodes.Status201Created)]
@@ -683,15 +689,23 @@ public sealed class UsersController : ControllerBase
 
 	[HttpGet("feed")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(UsersCountResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	public async Task<ActionResult<IReadOnlyList<UserDto>>> GetFeed(
+	public async Task<IActionResult> GetFeed(
 		[FromQuery] string? role,
 		[FromQuery] string? regionName,
 		[FromQuery] string? settlementName,
-		[FromQuery] int? start,
-		[FromQuery] int? end,
-		CancellationToken cancellationToken)
+		[FromQuery] UserFeedResponseFormat responseFormat = UserFeedResponseFormat.Users,
+		[FromQuery] int? start = null,
+		[FromQuery] int? end = null,
+		CancellationToken cancellationToken = default)
 	{
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null)
+		{
+			return invalid;
+		}
+
 		var invalidFilters = TryBuildUsersFeedFilterValidationProblem(role, regionName, settlementName);
 		if(invalidFilters is not null)
 		{
@@ -704,9 +718,21 @@ public sealed class UsersController : ControllerBase
 			return invalidPagination;
 		}
 
+		var normalizedResponseFormat = responseFormat switch
+		{
+			UserFeedResponseFormat.Count => UserResponseFormat.Count,
+			_ => UserResponseFormat.Users,
+		};
+
 		UserRoleRules.TryNormalizeOptionalRole(role, out var normalizedRole, out _);
 
 		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, cancellationToken);
+
+		if(string.Equals(normalizedResponseFormat, UserResponseFormat.Count, StringComparison.Ordinal))
+		{
+			return Ok(new UsersCountResponse(users.Count));
+		}
+
 		var dtos = users.Select(ToDto).ToList();
 		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
@@ -824,8 +850,6 @@ public sealed class UsersController : ControllerBase
 		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail: $"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Admin}', settlementName допускается только вместе с regionName.");
 	}
 
-
-
 	private ActionResult? TryBuildUsersPaginationValidationProblem(int? start, int? end)
 	{
 		if(start is null && end is null)
@@ -897,6 +921,28 @@ public sealed class UsersController : ControllerBase
 			.Skip(skip)
 			.Take(take)
 			.ToList();
+	}
+
+	private IActionResult? TryBuildValidationProblemIfInvalidModel()
+	{
+		if(ModelState.IsValid)
+		{
+			return null;
+		}
+
+		var errors = ModelState
+			.Where(x => x.Value?.Errors.Count > 0)
+			.ToDictionary(
+				x => x.Key,
+				x => x.Value!.Errors
+					.Select(e => string.IsNullOrWhiteSpace(e.ErrorMessage) ? "Invalid value." : e.ErrorMessage)
+					.ToArray());
+
+		return this.ValidationProblemWithCode(
+			ApiErrorCodes.ValidationFailed,
+			errors,
+			title: "Некорректный запрос.",
+			detail: "Проверьте query-параметры и их допустимые значения.");
 	}
 
 	private IActionResult MapUserRoleChangeError(UserRoleChangeError error)

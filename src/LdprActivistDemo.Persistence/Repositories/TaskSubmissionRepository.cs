@@ -742,6 +742,108 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return await MapToSubmissionModelOrAutoNotSupportedAsync(submission, cancellationToken);
 	}
 
+	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetTaskUsersAsync(
+		Guid actorUserId,
+		Guid taskId,
+		string? decisionStatus,
+		CancellationToken cancellationToken)
+	{
+		if(taskId == Guid.Empty)
+		{
+			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		var actor = await _db.Users
+			.AsNoTracking()
+			.Where(x => x.Id == actorUserId)
+			.Select(x => new
+			{
+				x.Id,
+				x.Role,
+			})
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if(actor is null)
+		{
+			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(TaskOperationError.InvalidCredentials);
+		}
+
+		var task = await _db.Tasks
+			.AsNoTracking()
+			.Where(x => x.Id == taskId)
+			.Select(x => new
+			{
+				x.Id,
+				x.AuthorUserId,
+				x.RegionId,
+				x.SettlementId,
+			})
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if(task is null)
+		{
+			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(TaskOperationError.TaskNotFound);
+		}
+
+		var isAdmin = string.Equals(actor.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase);
+		if(task.AuthorUserId != actorUserId && !isAdmin)
+		{
+			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(TaskOperationError.Forbidden);
+		}
+
+		IQueryable<User> usersQuery;
+
+		if(string.IsNullOrWhiteSpace(decisionStatus))
+		{
+			var submittedUserIds = _db.TaskSubmissions
+				.AsNoTracking()
+				.Where(x => x.TaskId == taskId)
+				.Select(x => x.UserId)
+				.Distinct();
+
+			usersQuery = _db.Users
+				.AsNoTracking()
+				.Where(x => x.RegionId == task.RegionId)
+				.Where(x => task.SettlementId == null || x.SettlementId == task.SettlementId.Value)
+				.Where(x => !submittedUserIds.Contains(x.Id));
+		}
+		else
+		{
+			var submittedUserIds = ApplyDecisionStatusAtOrAboveFilter(
+					_db.TaskSubmissions
+						.AsNoTracking()
+						.Where(x => x.TaskId == taskId),
+					decisionStatus)
+				.Select(x => x.UserId)
+				.Distinct();
+
+			usersQuery = _db.Users
+				.AsNoTracking()
+				.Where(x => submittedUserIds.Contains(x.Id));
+		}
+
+		var users = await usersQuery
+			.OrderBy(x => x.LastName)
+			.ThenBy(x => x.FirstName)
+			.ThenBy(x => x.MiddleName)
+			.Select(x => new UserPublicModel(
+				x.Id,
+				x.LastName,
+				x.FirstName,
+				x.MiddleName,
+				x.Gender,
+				x.PhoneNumber,
+				x.BirthDate,
+				x.Region.Name,
+				x.Settlement.Name,
+				x.Role,
+				x.IsPhoneConfirmed,
+				x.AvatarImageUrl))
+			.ToListAsync(cancellationToken);
+
+		return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Success(users);
+	}
+
 	private static IQueryable<TaskSubmission> ApplyDecisionStatusFilter(IQueryable<TaskSubmission> query, string decisionStatus)
 	{
 		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.InProgress, StringComparison.Ordinal))
@@ -765,6 +867,38 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		return query;
+	}
+
+	private static IQueryable<TaskSubmission> ApplyDecisionStatusAtOrAboveFilter(IQueryable<TaskSubmission> query, string decisionStatus)
+	{
+		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.InProgress, StringComparison.Ordinal))
+		{
+			return query.Where(s =>
+				s.DecisionStatus == TaskSubmissionDecisionStatus.InProgress
+				|| s.DecisionStatus == TaskSubmissionDecisionStatus.SubmittedForReview
+				|| s.DecisionStatus == TaskSubmissionDecisionStatus.Approve
+				|| s.DecisionStatus == TaskSubmissionDecisionStatus.Rejected);
+		}
+
+		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.SubmittedForReview, StringComparison.Ordinal))
+		{
+			return query.Where(s =>
+				s.DecisionStatus == TaskSubmissionDecisionStatus.SubmittedForReview
+				|| s.DecisionStatus == TaskSubmissionDecisionStatus.Approve
+				|| s.DecisionStatus == TaskSubmissionDecisionStatus.Rejected);
+		}
+
+		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.Approve, StringComparison.Ordinal))
+		{
+			return query.Where(s => s.DecisionStatus == TaskSubmissionDecisionStatus.Approve);
+		}
+
+		if(string.Equals(decisionStatus, TaskSubmissionDecisionStatus.Rejected, StringComparison.Ordinal))
+		{
+			return query.Where(s => s.DecisionStatus == TaskSubmissionDecisionStatus.Rejected);
+		}
+
+		return query.Where(_ => false);
 	}
 
 	private async Task<TaskOperationError> EnsureAdminTaskAccessAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)

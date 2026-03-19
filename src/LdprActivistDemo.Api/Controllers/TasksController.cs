@@ -3,8 +3,10 @@ using LdprActivistDemo.Api.Helpers;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
+using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Tasks;
+using LdprActivistDemo.Contracts.Users;
 
 using Microsoft.AspNetCore.Mvc;
 
@@ -36,6 +38,12 @@ public sealed class TasksController : ControllerBase
 		PublishedOldest = 2,
 		DeadlineSoonest = 3,
 		DeadlineLatest = 4,
+	}
+
+	public enum TaskUsersResponseFormat
+	{
+		Users = 0,
+		Count = 1,
 	}
 
 	public enum SubmissionFeedSort
@@ -948,6 +956,92 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
+	[HttpGet("{taskId:guid}/feed/users")]
+	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(UsersCountResponse), StatusCodes.Status200OK)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<IActionResult> GetTaskUsersAsync(
+		[FromRoute] Guid taskId,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromQuery] string? taskStatus = null,
+		[FromQuery] TaskUsersResponseFormat responseFormat = TaskUsersResponseFormat.Users,
+		[FromQuery] int? start = null,
+		[FromQuery] int? end = null,
+		CancellationToken cancellationToken = default)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var invalid = TryBuildValidationProblemIfInvalidModel();
+		if(invalid is not null)
+		{
+			return invalid;
+		}
+
+		if(taskId == Guid.Empty)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["taskId"] = new[] { "TaskId must be non-empty GUID." },
+				},
+				title: "Некорректный запрос.",
+				detail: "Передайте корректный taskId.");
+		}
+
+		if(!TryNormalizeSubmissionDecisionStatusFilter(taskStatus, out var normalizedTaskStatus, out var taskStatusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["taskStatus"] = new[] { taskStatusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр taskStatus допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected'. Пустое значение включает режим поиска пользователей без заявки к задаче по географии задачи.");
+		}
+
+		var normalizedResponseFormat = responseFormat switch
+		{
+			TaskUsersResponseFormat.Count => UserResponseFormat.Count,
+			_ => UserResponseFormat.Users,
+		};
+
+		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var result = await _tasks.GetTaskUsersAsync(
+			actorUserId,
+			actorUserPassword!,
+			taskId,
+			normalizedTaskStatus,
+			cancellationToken);
+
+		if(!result.IsSuccess || result.Value is null)
+		{
+			return MapTaskError(result.Error);
+		}
+
+		if(string.Equals(normalizedResponseFormat, UserResponseFormat.Count, StringComparison.Ordinal))
+		{
+			return Ok(new UsersCountResponse(result.Value.Count));
+		}
+
+		var dtos = result.Value.Select(ToUserDto).ToList();
+		return Ok(ApplyFeedPagination(dtos, start, end));
+	}
+
 	[HttpPost("submit/{submitId:guid}/approve")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -1590,4 +1684,21 @@ public sealed class TasksController : ControllerBase
 			s.DecidedAt,
 			s.PhotoImageIds,
 			s.ProofText);
+
+	private static UserDto ToUserDto(UserPublicModel u)
+		=> new(
+			u.Id,
+			u.LastName,
+			u.FirstName,
+			u.MiddleName,
+			u.Gender,
+			u.PhoneNumber,
+			u.BirthDate,
+			u.RegionName,
+			u.SettlementName,
+			u.Role,
+			u.IsPhoneConfirmed)
+		{
+			AvatarImageUrl = u.AvatarImageUrl,
+		};
 }

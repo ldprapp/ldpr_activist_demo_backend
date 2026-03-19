@@ -1,4 +1,5 @@
 ﻿using LdprActivistDemo.Application.Tasks.Models;
+using LdprActivistDemo.Application.Users.Models;
 
 namespace LdprActivistDemo.Application.Tasks;
 
@@ -29,4 +30,10 @@ public interface ITaskService
 	Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionCoordinatorFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid? userId, string? decisionStatus, CancellationToken cancellationToken);
 	Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(Guid actorUserId, string actorUserPassword, Guid? taskId, Guid userId, string? decisionStatus, CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken);
+	Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetTaskUsersAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid taskId,
+		string? decisionStatus,
+		CancellationToken cancellationToken);
 }

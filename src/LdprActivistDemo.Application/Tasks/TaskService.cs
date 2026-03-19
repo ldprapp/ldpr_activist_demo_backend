@@ -215,6 +215,24 @@ public sealed class TaskService : ITaskService
 			: TaskOperationResult<TaskSubmissionModel>.Fail(authError.Value);
 	}
 
+	public async Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetTaskUsersAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid taskId,
+		string? decisionStatus,
+		CancellationToken cancellationToken)
+	{
+		if(taskId == Guid.Empty)
+		{
+			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(TaskOperationError.ValidationFailed);
+		}
+
+		var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+		return authError is null
+			? await _submissions.GetTaskUsersAsync(actorUserId, taskId, decisionStatus, cancellationToken)
+			: TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(authError.Value);
+	}
+
 	private async Task<TaskOperationError?> TryAuthenticateActorAsync(
 		Guid actorUserId,
 		string actorUserPassword,
