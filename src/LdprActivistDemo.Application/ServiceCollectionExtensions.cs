@@ -3,6 +3,7 @@ using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Tasks;
+using LdprActivistDemo.Application.UserPoints;
 using LdprActivistDemo.Application.Users;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -25,7 +26,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IActorAccessService, ActorAccessService>();
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
-		services.AddScoped<LdprActivistDemo.Application.UserPoints.IUserPointsService, LdprActivistDemo.Application.UserPoints.UserPointsService>();
+		services.AddScoped<IUserPointsService, UserPointsService>();
 		services.AddScoped<ITaskService, TaskService>();
 		services.AddScoped<IImageService, ImageService>();
 

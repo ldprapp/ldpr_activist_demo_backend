@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Primitives;
 
+using Serilog.Context;
+
 namespace LdprActivistDemo.Api.Middleware;
 
 /// <summary>
@@ -35,6 +37,11 @@ public sealed class CorrelationIdMiddleware
 			return Task.CompletedTask;
 		});
 
-		await _next(context);
+		using(LogContext.PushProperty("CorrelationId", correlationId))
+		using(LogContext.PushProperty("RequestId", context.TraceIdentifier))
+		using(LogContext.PushProperty("RequestPath", context.Request.Path.Value ?? string.Empty))
+		{
+			await _next(context);
+		}
 	}
 }

@@ -19,7 +19,6 @@ public static class ControllerProblemExtensions
 		string? detail = null)
 	{
 		var http = controller.HttpContext;
-
 		var pd = new ProblemDetails
 		{
 			Status = statusCode,
@@ -49,7 +48,6 @@ public static class ControllerProblemExtensions
 		string? detail = null)
 	{
 		var http = controller.HttpContext;
-
 		var pd = new ValidationProblemDetails(errors)
 		{
 			Status = StatusCodes.Status400BadRequest,
@@ -78,7 +76,6 @@ public static class ControllerProblemExtensions
 		string actorPasswordHeader = "X-Actor-Password")
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
 		if(actorUserId == Guid.Empty)
 		{
 			errors["actorUserId"] = new[] { "ActorUserId is required." };
@@ -86,7 +83,10 @@ public static class ControllerProblemExtensions
 
 		if(string.IsNullOrWhiteSpace(actorUserPassword))
 		{
-			errors["actorUserPassword"] = new[] { $"ActorUserPassword is required (use {actorPasswordHeader} header)." };
+			errors["actorUserPassword"] = new[]
+			{
+				$"ActorUserPassword is required (use {actorPasswordHeader} header)."
+			};
 		}
 
 		return errors.Count == 0
@@ -105,7 +105,6 @@ public static class ControllerProblemExtensions
 		string targetFieldName)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
 		if(targetUserId == Guid.Empty)
 		{
 			errors[targetFieldName] = new[] { $"{targetFieldName} must be non-empty GUID." };
@@ -131,7 +130,6 @@ public static class ControllerProblemExtensions
 		string comparedFieldName)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
 		if(comparedGuid == Guid.Empty)
 		{
 			errors[comparedFieldName] = new[] { $"{comparedFieldName} must be non-empty GUID." };
@@ -171,7 +169,10 @@ public static class ControllerProblemExtensions
 			LdprActivistDemo.Contracts.Errors.ApiErrorCodes.ValidationFailed,
 			new Dictionary<string, string[]>(StringComparer.Ordinal)
 			{
-				[comparedPassword == actorUserPassword ? "body" : comparedFieldName] = new[] { $"{comparedFieldName} must be equal to actorUserPassword from {actorPasswordHeader} header." },
+				[comparedPassword == actorUserPassword ? "body" : comparedFieldName] = new[]
+				{
+					$"{comparedFieldName} must be equal to actorUserPassword from {actorPasswordHeader} header."
+				},
 			},
 			title: "Некорректный запрос.",
 			detail: $"{comparedFieldName} должен совпадать с actorUserPassword.");
@@ -184,9 +185,9 @@ public static class ControllerProblemExtensions
 			return corr.ToString();
 		}
 
-		if(http.Items.TryGetValue(CorrelationIdMiddleware.ItemKey, out var v)
-			&& v is string s
-			&& !string.IsNullOrWhiteSpace(s))
+		if(http.Items.TryGetValue(CorrelationIdMiddleware.ItemKey, out var value)
+		   && value is string s
+		   && !string.IsNullOrWhiteSpace(s))
 		{
 			return s;
 		}

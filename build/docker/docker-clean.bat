@@ -11,5 +11,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if exist ".runtime" (
+  rmdir /s /q ".runtime"
+)
+
 echo Done.
 popd

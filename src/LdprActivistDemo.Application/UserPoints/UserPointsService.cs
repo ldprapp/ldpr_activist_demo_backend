@@ -1,6 +1,10 @@
-﻿using LdprActivistDemo.Application.UserPoints.Models;
+﻿using LdprActivistDemo.Application.Diagnostics;
+using LdprActivistDemo.Application.Logging;
+using LdprActivistDemo.Application.UserPoints.Models;
 using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
+
+using Microsoft.Extensions.Logging;
 
 namespace LdprActivistDemo.Application.UserPoints;
 
@@ -9,12 +13,18 @@ public sealed class UserPointsService : IUserPointsService
 	private readonly IUserRepository _users;
 	private readonly IUserPointsTransactionRepository _transactions;
 	private readonly IActorAccessService _actorAccess;
+	private readonly ILogger<UserPointsService> _logger;
 
-	public UserPointsService(IUserRepository users, IUserPointsTransactionRepository transactions, IActorAccessService actorAccess)
+	public UserPointsService(
+		IUserRepository users,
+		IUserPointsTransactionRepository transactions,
+		IActorAccessService actorAccess,
+		ILogger<UserPointsService> logger)
 	{
 		_users = users ?? throw new ArgumentNullException(nameof(users));
 		_transactions = transactions ?? throw new ArgumentNullException(nameof(transactions));
 		_actorAccess = actorAccess ?? throw new ArgumentNullException(nameof(actorAccess));
+		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
 	public async Task<UserPointsResult<int>> GetBalanceAsync(
@@ -23,16 +33,88 @@ public sealed class UserPointsService : IUserPointsService
 		Guid userId,
 		CancellationToken cancellationToken)
 	{
-		var auth = await AuthorizeReadAsync(actorUserId, actorUserPassword, userId, cancellationToken);
-		if(auth.Error is not null)
+		var properties = new (string Name, object? Value)[]
 		{
-			return UserPointsResult<int>.Fail(auth.Error.Value);
-		}
+			("ActorUserId", actorUserId),
+			("UserId", userId),
+		};
 
-		var balance = await _transactions.GetBalanceAsync(userId, cancellationToken);
-		return balance is null
-			? UserPointsResult<int>.Fail(UserPointsError.UserNotFound)
-			: UserPointsResult<int>.Ok(balance.Value);
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.UserPoints.GetBalance,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.UserPoints.GetBalance,
+			properties);
+
+		_logger.LogStarted(
+			DomainLogEvents.UserPoints.GetBalance,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.UserPoints.GetBalance,
+			"User points balance read started.",
+			properties);
+
+		try
+		{
+			var auth = await AuthorizeReadAsync(actorUserId, actorUserPassword, userId, cancellationToken);
+			if(auth.Error is not null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.GetBalance,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.GetBalance,
+					"User points balance read rejected.",
+					StructuredLog.Combine(properties, ("Error", auth.Error.Value)));
+
+				return UserPointsResult<int>.Fail(auth.Error.Value);
+			}
+
+			var balance = await _transactions.GetBalanceAsync(userId, cancellationToken);
+			if(balance is null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.GetBalance,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.GetBalance,
+					"User points balance read rejected. Target user not found.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.UserNotFound)));
+
+				return UserPointsResult<int>.Fail(UserPointsError.UserNotFound);
+			}
+
+			_logger.LogCompleted(
+				LogLevel.Debug,
+				DomainLogEvents.UserPoints.GetBalance,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.GetBalance,
+				"User points balance read completed.",
+				StructuredLog.Combine(properties, ("Balance", balance.Value)));
+
+			return UserPointsResult<int>.Ok(balance.Value);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.UserPoints.GetBalance,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.GetBalance,
+				"User points balance read aborted.",
+				properties);
+			throw;
+		}
+		catch(Exception ex)
+		{
+			_logger.LogFailed(
+				LogLevel.Error,
+				DomainLogEvents.UserPoints.GetBalance,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.GetBalance,
+				"User points balance read failed.",
+				ex,
+				properties);
+			throw;
+		}
 	}
 
 	public async Task<UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>> GetTransactionsAsync(
@@ -41,16 +123,88 @@ public sealed class UserPointsService : IUserPointsService
 		Guid userId,
 		CancellationToken cancellationToken)
 	{
-		var auth = await AuthorizeReadAsync(actorUserId, actorUserPassword, userId, cancellationToken);
-		if(auth.Error is not null)
+		var properties = new (string Name, object? Value)[]
 		{
-			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(auth.Error.Value);
-		}
+			("ActorUserId", actorUserId),
+			("UserId", userId),
+		};
 
-		var list = await _transactions.GetTransactionsAsync(userId, excludeInitialization: true, cancellationToken);
-		return list is null
-			? UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.UserNotFound)
-			: UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Ok(list);
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.UserPoints.GetTransactions,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.UserPoints.GetTransactions,
+			properties);
+
+		_logger.LogStarted(
+			DomainLogEvents.UserPoints.GetTransactions,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.UserPoints.GetTransactions,
+			"User points transactions read started.",
+			properties);
+
+		try
+		{
+			var auth = await AuthorizeReadAsync(actorUserId, actorUserPassword, userId, cancellationToken);
+			if(auth.Error is not null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.GetTransactions,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.GetTransactions,
+					"User points transactions read rejected.",
+					StructuredLog.Combine(properties, ("Error", auth.Error.Value)));
+
+				return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(auth.Error.Value);
+			}
+
+			var list = await _transactions.GetTransactionsAsync(userId, excludeInitialization: true, cancellationToken);
+			if(list is null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.GetTransactions,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.GetTransactions,
+					"User points transactions read rejected. Target user not found.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.UserNotFound)));
+
+				return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.UserNotFound);
+			}
+
+			_logger.LogCompleted(
+				LogLevel.Debug,
+				DomainLogEvents.UserPoints.GetTransactions,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.GetTransactions,
+				"User points transactions read completed.",
+				StructuredLog.Combine(properties, ("Count", list.Count)));
+
+			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Ok(list);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.UserPoints.GetTransactions,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.GetTransactions,
+				"User points transactions read aborted.",
+				properties);
+			throw;
+		}
+		catch(Exception ex)
+		{
+			_logger.LogFailed(
+				LogLevel.Error,
+				DomainLogEvents.UserPoints.GetTransactions,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.GetTransactions,
+				"User points transactions read failed.",
+				ex,
+				properties);
+			throw;
+		}
 	}
 
 	public async Task<UserPointsResult<Guid>> CreateTransactionAsync(
@@ -71,51 +225,163 @@ public sealed class UserPointsService : IUserPointsService
 			? null
 			: taskId;
 
-		if(userId == Guid.Empty || amount == 0 || comment.Length == 0)
+		var properties = new (string Name, object? Value)[]
 		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
-		}
+			("ActorUserId", actorUserId),
+			("UserId", userId),
+			("Amount", amount),
+			("CoordinatorUserId", coordinatorUserId),
+			("TaskId", taskId),
+		};
 
-		if(!taskId.HasValue && !coordinatorUserId.HasValue)
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.UserPoints.CreateTransaction,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.UserPoints.CreateTransaction,
+			properties);
+
+		_logger.LogStarted(
+			DomainLogEvents.UserPoints.CreateTransaction,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.UserPoints.CreateTransaction,
+			"User points transaction create started.",
+			properties);
+
+		try
 		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
-		}
+			if(userId == Guid.Empty || amount == 0 || comment.Length == 0)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected by validation.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.ValidationFailed)));
+				return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+			}
 
-		if(coordinatorUserId.HasValue && coordinatorUserId.Value != actorUserId)
+			if(!taskId.HasValue && !coordinatorUserId.HasValue)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected. Missing coordinatorUserId/taskId.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.ValidationFailed)));
+				return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+			}
+
+			if(coordinatorUserId.HasValue && coordinatorUserId.Value != actorUserId)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected. CoordinatorUserId mismatch.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.ValidationFailed)));
+				return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+			}
+
+			var auth = await AuthorizeCoordinatorWriteAsync(actorUserId, actorUserPassword, userId, cancellationToken);
+			if(auth.Error is not null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected.",
+					StructuredLog.Combine(properties, ("Error", auth.Error.Value)));
+				return UserPointsResult<Guid>.Fail(auth.Error.Value);
+			}
+
+			var currentBalance = await _transactions.GetBalanceAsync(userId, cancellationToken);
+			if(currentBalance is null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected. Target user not found.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.UserNotFound)));
+				return UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound);
+			}
+
+			var nextBalance = currentBalance.Value + amount;
+			if(nextBalance < 0)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected. Insufficient balance.",
+					StructuredLog.Combine(
+						properties,
+						("Error", UserPointsError.InsufficientBalance),
+						("CurrentBalance", currentBalance.Value),
+						("NextBalance", nextBalance)));
+				return UserPointsResult<Guid>.Fail(UserPointsError.InsufficientBalance);
+			}
+
+			var id = await _transactions.CreateAsync(
+				userId,
+				amount,
+				comment,
+				DateTimeOffset.UtcNow,
+				coordinatorUserId,
+				taskId,
+				cancellationToken);
+
+			if(id is null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.UserPoints.CreateTransaction,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.UserPoints.CreateTransaction,
+					"User points transaction create rejected. Target user disappeared before save.",
+					StructuredLog.Combine(properties, ("Error", UserPointsError.UserNotFound)));
+				return UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound);
+			}
+
+			_logger.LogCompleted(
+				LogLevel.Information,
+				DomainLogEvents.UserPoints.CreateTransaction,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.CreateTransaction,
+				"User points transaction created.",
+				StructuredLog.Combine(properties, ("TransactionId", id.Value), ("NextBalance", nextBalance)));
+
+			return UserPointsResult<Guid>.Ok(id.Value);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
 		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.UserPoints.CreateTransaction,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.CreateTransaction,
+				"User points transaction create aborted.",
+				properties);
+			throw;
 		}
-
-		var auth = await AuthorizeCoordinatorWriteAsync(actorUserId, actorUserPassword, userId, cancellationToken);
-		if(auth.Error is not null)
+		catch(Exception ex)
 		{
-			return UserPointsResult<Guid>.Fail(auth.Error.Value);
+			_logger.LogFailed(
+				LogLevel.Error,
+				DomainLogEvents.UserPoints.CreateTransaction,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.UserPoints.CreateTransaction,
+				"User points transaction create failed.",
+				ex,
+				properties);
+			throw;
 		}
-
-		var currentBalance = await _transactions.GetBalanceAsync(userId, cancellationToken);
-		if(currentBalance is null)
-		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound);
-		}
-
-		var nextBalance = currentBalance.Value + amount;
-		if(nextBalance < 0)
-		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.InsufficientBalance);
-		}
-
-		var id = await _transactions.CreateAsync(
-			userId,
-			amount,
-			comment,
-			DateTimeOffset.UtcNow,
-			coordinatorUserId,
-			taskId,
-			cancellationToken);
-
-		return id is null
-			? UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound)
-			: UserPointsResult<Guid>.Ok(id.Value);
 	}
 
 	private async Task<(UserPointsError? Error, UserInternalModel? Actor)> AuthorizeReadAsync(

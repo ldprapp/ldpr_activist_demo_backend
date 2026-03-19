@@ -23,8 +23,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if /I "%STRUCTURED_LOGGING_FILES_ENABLED%"=="true" if defined STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST (
+  if not exist "%STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST%" mkdir "%STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST%" >nul 2>&1
+)
+
 echo [ldpr_activist_demo] Starting...
-docker compose -f "docker-compose.yml" up -d postgres redis
+docker compose --env-file ".env" -f "docker-compose.yml" up -d postgres redis
 if errorlevel 1 (
   echo Failed to start infrastructure.
   popd

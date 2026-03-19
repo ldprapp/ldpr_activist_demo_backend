@@ -1,15 +1,14 @@
 ﻿using System.Diagnostics;
 using System.Text.Json;
 
+using LdprActivistDemo.Api.Logging;
+using LdprActivistDemo.Application.Diagnostics;
 using LdprActivistDemo.Contracts.Errors;
 
 using Microsoft.AspNetCore.Mvc;
 
 namespace LdprActivistDemo.Api.Middleware;
 
-/// <summary>
-/// Middleware, который превращает необработанные исключения в ProblemDetails и логирует их.
-/// </summary>
 public sealed class ApiExceptionHandlingMiddleware
 {
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -17,7 +16,9 @@ public sealed class ApiExceptionHandlingMiddleware
 	private readonly RequestDelegate _next;
 	private readonly ILogger<ApiExceptionHandlingMiddleware> _logger;
 
-	public ApiExceptionHandlingMiddleware(RequestDelegate next, ILogger<ApiExceptionHandlingMiddleware> logger)
+	public ApiExceptionHandlingMiddleware(
+		RequestDelegate next,
+		ILogger<ApiExceptionHandlingMiddleware> logger)
 	{
 		_next = next;
 		_logger = logger;
@@ -31,22 +32,40 @@ public sealed class ApiExceptionHandlingMiddleware
 		}
 		catch(OperationCanceledException) when(context.RequestAborted.IsCancellationRequested)
 		{
-			_logger.LogInformation("Request aborted by client: {Method} {Path}.",
-				context.Request.Method,
-				context.Request.Path);
+			throw;
 		}
 		catch(Exception ex)
 		{
 			var traceId = Activity.Current?.Id ?? context.TraceIdentifier;
-			var correlationId =
-				context.Items.TryGetValue(CorrelationIdMiddleware.ItemKey, out var v) ? v?.ToString() : null;
+			var correlationId = context.Items.TryGetValue(CorrelationIdMiddleware.ItemKey, out var value)
+				? value?.ToString()
+				: null;
+			var operation = ApiLogOperations.Http.UnhandledException;
 
-			_logger.LogError(ex,
-				"Unhandled exception for HTTP {Method} {Path}. traceId={TraceId}, correlationId={CorrelationId}.",
-				context.Request.Method,
-				context.Request.Path,
-				traceId,
-				correlationId);
+			var commonProperties = new (string Name, object? Value)[]
+			{
+				("Method", context.Request.Method),
+				("Path", context.Request.Path.Value),
+				("EndpointDisplayName", context.GetEndpoint()?.DisplayName),
+				("TraceId", traceId),
+				("TraceIdentifier", context.TraceIdentifier),
+				("CorrelationId", correlationId),
+			};
+
+			using var scope = _logger.BeginExecutionScope(
+				DomainLogEvents.Http.UnhandledException,
+				LogLayers.ApiMiddleware,
+				operation,
+				commonProperties);
+
+			_logger.LogFailed(
+				LogLevel.Error,
+				DomainLogEvents.Http.UnhandledException,
+				LogLayers.ApiMiddleware,
+				operation,
+				"Unhandled exception while processing HTTP request.",
+				ex,
+				commonProperties);
 
 			if(context.Response.HasStarted)
 			{
@@ -72,7 +91,9 @@ public sealed class ApiExceptionHandlingMiddleware
 				pd.Extensions["correlationId"] = correlationId;
 			}
 
-			await context.Response.WriteAsync(JsonSerializer.Serialize(pd, JsonOptions), context.RequestAborted);
+			await context.Response.WriteAsync(
+				JsonSerializer.Serialize(pd, JsonOptions),
+				context.RequestAborted);
 		}
 	}
 }

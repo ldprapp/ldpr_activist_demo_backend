@@ -1,5 +1,7 @@
 ﻿using System.Collections.Concurrent;
 
+using LdprActivistDemo.Application.Diagnostics;
+using LdprActivistDemo.Application.Logging;
 using LdprActivistDemo.Application.Otp;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -36,7 +38,30 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 		}
 
 		var delay = GetCleanupDelay();
-		_dueAtByUserId[userId] = DateTimeOffset.UtcNow.Add(delay);
+		var dueAt = DateTimeOffset.UtcNow.Add(delay);
+		_dueAtByUserId[userId] = dueAt;
+
+		var properties = new (string Name, object? Value)[]
+		{
+			("UserId", userId),
+			("DueAt", dueAt),
+			("DelaySeconds", (int)delay.TotalSeconds),
+			("ScheduledCount", _dueAtByUserId.Count),
+		};
+
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.User.CleanupSchedule,
+			LogLayers.ApplicationBackground,
+			ApplicationLogOperations.Users.CleanupSchedule,
+			properties);
+
+		_logger.LogCompleted(
+			LogLevel.Debug,
+			DomainLogEvents.User.CleanupSchedule,
+			LogLayers.ApplicationBackground,
+			ApplicationLogOperations.Users.CleanupSchedule,
+			"Unconfirmed user cleanup scheduled.",
+			properties);
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -61,10 +86,14 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 
 		if(delay > TimeSpan.FromMinutes(30))
 		{
-			_logger.LogWarning(
-				"Unconfirmed user cleanup delay is {DelayMinutes} minutes (OTP TTL = {OtpTtlSeconds} seconds).",
-				(int)delay.TotalMinutes,
-				otpTtlSeconds);
+			_logger.LogRejected(
+				LogLevel.Warning,
+				DomainLogEvents.User.CleanupSchedule,
+				LogLayers.ApplicationBackground,
+				ApplicationLogOperations.Users.CleanupSchedule,
+				"Unconfirmed user cleanup delay is unexpectedly large.",
+				("DelayMinutes", (int)delay.TotalMinutes),
+				("OtpTtlSeconds", otpTtlSeconds));
 		}
 
 		return delay;
@@ -72,8 +101,33 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 
 	private async Task CleanupDueAsync(CancellationToken cancellationToken)
 	{
+		var properties = new (string Name, object? Value)[]
+		{
+			("ScheduledCount", _dueAtByUserId.Count),
+		};
+
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.User.CleanupRun,
+			LogLayers.ApplicationBackground,
+			ApplicationLogOperations.Users.CleanupRun,
+			properties);
+
+		_logger.LogStarted(
+			DomainLogEvents.User.CleanupRun,
+			LogLayers.ApplicationBackground,
+			ApplicationLogOperations.Users.CleanupRun,
+			"Unconfirmed users cleanup run started.",
+			properties);
+
 		if(_dueAtByUserId.IsEmpty)
 		{
+			_logger.LogCompleted(
+				LogLevel.Debug,
+				DomainLogEvents.User.CleanupRun,
+				LogLayers.ApplicationBackground,
+				ApplicationLogOperations.Users.CleanupRun,
+				"Unconfirmed users cleanup run completed. Queue is empty.",
+				properties);
 			return;
 		}
 
@@ -93,8 +147,19 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 
 		if(due is null || due.Count == 0)
 		{
+			_logger.LogCompleted(
+				LogLevel.Debug,
+				DomainLogEvents.User.CleanupRun,
+				LogLayers.ApplicationBackground,
+				ApplicationLogOperations.Users.CleanupRun,
+				"Unconfirmed users cleanup run completed. No due users.",
+				StructuredLog.Combine(properties, ("DueUsersCount", 0)));
 			return;
 		}
+
+		var runProperties = StructuredLog.Combine(
+			properties,
+			("DueUsersCount", due.Count));
 
 		foreach(var userId in due)
 		{
@@ -103,8 +168,11 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 			_dueAtByUserId.TryRemove(userId, out _);
 		}
 
-		await using var scope = _scopeFactory.CreateAsyncScope();
-		var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+		await using var serviceScope = _scopeFactory.CreateAsyncScope();
+		var users = serviceScope.ServiceProvider.GetRequiredService<IUserRepository>();
+
+		var removedCount = 0;
+		var failedCount = 0;
 
 		foreach(var userId in due)
 		{
@@ -115,7 +183,7 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 				var removed = await users.DeleteUnconfirmedByIdAsync(userId, cancellationToken);
 				if(removed)
 				{
-					_logger.LogInformation("Unconfirmed user removed by timer. UserId={UserId}.", userId);
+					removedCount++;
 				}
 			}
 			catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
@@ -124,8 +192,27 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 			}
 			catch(Exception ex)
 			{
-				_logger.LogError(ex, "Failed to cleanup user by timer. UserId={UserId}.", userId);
+				failedCount++;
+				_logger.LogFailed(
+					LogLevel.Error,
+					DomainLogEvents.User.CleanupRun,
+					LogLayers.ApplicationBackground,
+					ApplicationLogOperations.Users.CleanupRun,
+					"Failed to cleanup unconfirmed user by timer.",
+					ex,
+					StructuredLog.Combine(runProperties, ("UserId", userId)));
 			}
 		}
+
+		_logger.LogCompleted(
+			LogLevel.Information,
+			DomainLogEvents.User.CleanupRun,
+			LogLayers.ApplicationBackground,
+			ApplicationLogOperations.Users.CleanupRun,
+			"Unconfirmed users cleanup run completed.",
+			StructuredLog.Combine(
+				runProperties,
+				("RemovedCount", removedCount),
+				("FailedCount", failedCount)));
 	}
 }

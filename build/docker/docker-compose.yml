@@ -42,19 +42,39 @@ services:
       ASPNETCORE_URLS: http://+:8080
 
       # .NET configuration via env vars
-      ConnectionStrings__Postgres: ${POSTGRES_CONNECTION_STRING_DOCKER}
-      ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING_DOCKER}
+      ConnectionStrings__Postgres: ${POSTGRES_CONNECTION_STRING}
+      ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING}
 
       Otp__TtlSeconds: ${OTP_TTL_SECONDS}
       Otp__Length: ${OTP_LENGTH}
 
       Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE}
 
+      StructuredLogging__ServiceName: ${STRUCTURED_LOGGING_SERVICE_NAME}
+      StructuredLogging__ServiceNamespace: ${STRUCTURED_LOGGING_SERVICE_NAMESPACE}
+      StructuredLogging__InstanceId: ${STRUCTURED_LOGGING_INSTANCE_ID}
+      StructuredLogging__MinimumLevel__Default: ${STRUCTURED_LOGGING_MIN_LEVEL_DEFAULT}
+      StructuredLogging__MinimumLevel__Microsoft: ${STRUCTURED_LOGGING_MIN_LEVEL_MICROSOFT}
+      StructuredLogging__MinimumLevel__MicrosoftAspNetCore: ${STRUCTURED_LOGGING_MIN_LEVEL_MICROSOFT_ASPNETCORE}
+      StructuredLogging__MinimumLevel__MicrosoftEntityFrameworkCore: ${STRUCTURED_LOGGING_MIN_LEVEL_MICROSOFT_ENTITYFRAMEWORKCORE}
+      StructuredLogging__MinimumLevel__System: ${STRUCTURED_LOGGING_MIN_LEVEL_SYSTEM}
+      StructuredLogging__Console__Enabled: ${STRUCTURED_LOGGING_CONSOLE_ENABLED}
+      StructuredLogging__Files__Enabled: ${STRUCTURED_LOGGING_FILES_ENABLED}
+      StructuredLogging__Files__RootPath: ${STRUCTURED_LOGGING_FILES_ROOT_PATH_CONTAINER}
+      StructuredLogging__Files__Shared: ${STRUCTURED_LOGGING_FILES_SHARED}
+      StructuredLogging__Files__FileSizeLimitBytes: ${STRUCTURED_LOGGING_FILES_FILE_SIZE_LIMIT_BYTES}
+      StructuredLogging__Files__RollOnFileSizeLimit: ${STRUCTURED_LOGGING_FILES_ROLL_ON_FILE_SIZE_LIMIT}
+      StructuredLogging__Files__RetainedFileCountLimit: ${STRUCTURED_LOGGING_FILES_RETAINED_FILE_COUNT_LIMIT}
+      StructuredLogging__Files__DateSinkMapCountLimit: ${STRUCTURED_LOGGING_FILES_DATE_SINK_MAP_COUNT_LIMIT}
+      StructuredLogging__Files__LevelSinkMapCountLimit: ${STRUCTURED_LOGGING_FILES_LEVEL_SINK_MAP_COUNT_LIMIT}
+
       # entrypoint target
       APP_DLL: ${APP_DLL}
 
     ports:
       - "${API_PORT}:8080"
+    volumes:
+      - "${STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST}:${STRUCTURED_LOGGING_FILES_ROOT_PATH_CONTAINER}"
 
     depends_on:
       postgres:
