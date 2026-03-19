@@ -33,6 +33,4 @@ public interface IUserRepository
 	Task<IReadOnlyList<UserPublicModel>> GetByFiltersAsync(string? role, string? regionName, string? settlementName, CancellationToken cancellationToken);
 	Task<bool> SetRoleAsync(Guid userId, string role, CancellationToken cancellationToken);
 	Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken);
-
-	Task<bool> AddPointsAsync(Guid userId, int pointsToAdd, CancellationToken cancellationToken);
 }

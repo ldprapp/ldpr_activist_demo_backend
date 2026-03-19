@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LdprActivistDemo.Api.Controllers;
 
+/// <summary>
+/// Эндпоинты баланса и истории транзакций баллов пользователя.
+/// </summary>
 [ApiController]
 [Route("api/v1/users/{userId:guid}/points")]
 public sealed class UserPointsController : ControllerBase
@@ -21,6 +24,22 @@ public sealed class UserPointsController : ControllerBase
 		_points = points ?? throw new ArgumentNullException(nameof(points));
 	}
 
+	/// <summary>
+	/// Возвращает текущий баланс баллов пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может просматривать собственный баланс. Координатор и администратор
+	/// могут просматривать баланс других пользователей.
+	/// </remarks>
+	/// <param name="userId">Идентификатор пользователя, чей баланс требуется получить.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего запрос.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Баланс успешно возвращён.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет права просматривать баланс указанного пользователя.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("balance")]
 	[ProducesResponseType(typeof(UserPointsBalanceResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -60,6 +79,22 @@ public sealed class UserPointsController : ControllerBase
 		return Ok(new UserPointsBalanceResponse(result.Value));
 	}
 
+	/// <summary>
+	/// Возвращает историю транзакций баллов пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может просматривать только собственные транзакции. Координатор и администратор
+	/// могут просматривать транзакции других пользователей.
+	/// </remarks>
+	/// <param name="userId">Идентификатор пользователя, чьи транзакции требуется получить.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего запрос.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">История транзакций успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет права просматривать транзакции указанного пользователя.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("transactions")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserPointsTransactionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -103,6 +138,24 @@ public sealed class UserPointsController : ControllerBase
 		return Ok(dtos);
 	}
 
+	/// <summary>
+	/// Создаёт ручную транзакцию начисления или списания баллов пользователю.
+	/// </summary>
+	/// <remarks>
+	/// Операция предназначена для координатора или администратора. Параметр <c>coordinatorUserId</c>
+	/// должен совпадать с <c>actorUserId</c>. Сумма не может быть равна нулю.
+	/// </remarks>
+	/// <param name="userId">Идентификатор пользователя, для которого создаётся транзакция.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="coordinatorUserId">Идентификатор координатора, который оформляет транзакцию. Должен совпадать с <c>actorUserId</c>.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Тело запроса с суммой и комментарием транзакции.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Транзакция успешно создана.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет права создавать транзакции баллов.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpPost("transactions")]
 	[ProducesResponseType(typeof(CreateUserPointsTransactionResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]

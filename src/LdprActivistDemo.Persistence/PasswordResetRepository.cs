@@ -15,20 +15,17 @@ public sealed class PasswordResetRepository : IPasswordResetRepository
 
 	public async Task<bool> SetPasswordHashAsync(Guid userId, string passwordHash, CancellationToken cancellationToken)
 	{
-		var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId, cancellationToken);
-		if(u is null)
+		if(userId == Guid.Empty || string.IsNullOrWhiteSpace(passwordHash))
 		{
 			return false;
 		}
 
-		if(!u.IsPhoneConfirmed)
-		{
-			return false;
-		}
+		var affected = await _db.Users
+			.Where(x => x.Id == userId && x.IsPhoneConfirmed)
+			.ExecuteUpdateAsync(
+				setters => setters.SetProperty(x => x.PasswordHash, passwordHash),
+				cancellationToken);
 
-		u.PasswordHash = passwordHash;
-		await _db.SaveChangesAsync(cancellationToken);
-
-		return true;
+		return affected > 0;
 	}
 }

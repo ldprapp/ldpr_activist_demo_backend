@@ -23,9 +23,13 @@ public sealed class OtpService : IOtpService
 
 	public async Task IssueAsync(string phoneNumber, CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var opts = _options.Value;
 
 		phoneNumber = (phoneNumber ?? string.Empty).Trim();
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var code = _generator.GenerateDigits(opts.Length);
 
 		await _store.SetAsync(phoneNumber, code, TimeSpan.FromSeconds(opts.TtlSeconds), cancellationToken);
@@ -35,6 +39,8 @@ public sealed class OtpService : IOtpService
 
 	public async Task<bool> VerifyAsync(string phoneNumber, string code, CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		phoneNumber = (phoneNumber ?? string.Empty).Trim();
 		code = (code ?? string.Empty).Trim();
 
@@ -49,6 +55,7 @@ public sealed class OtpService : IOtpService
 			return false;
 		}
 
+		cancellationToken.ThrowIfCancellationRequested();
 		await _store.RemoveAsync(phoneNumber, cancellationToken);
 		return true;
 	}

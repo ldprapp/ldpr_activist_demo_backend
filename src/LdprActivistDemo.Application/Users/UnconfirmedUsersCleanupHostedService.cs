@@ -82,6 +82,8 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 
 		foreach(var kvp in _dueAtByUserId)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			if(kvp.Value <= now)
 			{
 				due ??= new List<Guid>();
@@ -96,6 +98,8 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 
 		foreach(var userId in due)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			_dueAtByUserId.TryRemove(userId, out _);
 		}
 
@@ -104,6 +108,8 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 
 		foreach(var userId in due)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			try
 			{
 				var removed = await users.DeleteUnconfirmedByIdAsync(userId, cancellationToken);
@@ -111,6 +117,10 @@ public sealed class UnconfirmedUsersCleanupHostedService : BackgroundService, IU
 				{
 					_logger.LogInformation("Unconfirmed user removed by timer. UserId={UserId}.", userId);
 				}
+			}
+			catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+			{
+				throw;
 			}
 			catch(Exception ex)
 			{

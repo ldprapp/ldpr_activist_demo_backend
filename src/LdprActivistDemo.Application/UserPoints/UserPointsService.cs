@@ -23,26 +23,10 @@ public sealed class UserPointsService : IUserPointsService
 		Guid userId,
 		CancellationToken cancellationToken)
 	{
-		if(actorUserId == Guid.Empty
-		   || userId == Guid.Empty
-		   || string.IsNullOrWhiteSpace(actorUserPassword))
+		var auth = await AuthorizeReadAsync(actorUserId, actorUserPassword, userId, cancellationToken);
+		if(auth.Error is not null)
 		{
-			return UserPointsResult<int>.Fail(UserPointsError.ValidationFailed);
-		}
-
-		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!actorAuth.IsSuccess)
-		{
-			return UserPointsResult<int>.Fail(UserPointsError.InvalidCredentials);
-		}
-
-		var actor = actorAuth.Actor!;
-		if(actorUserId != userId)
-		{
-			if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
-			{
-				return UserPointsResult<int>.Fail(UserPointsError.Forbidden);
-			}
+			return UserPointsResult<int>.Fail(auth.Error.Value);
 		}
 
 		var balance = await _transactions.GetBalanceAsync(userId, cancellationToken);
@@ -57,26 +41,10 @@ public sealed class UserPointsService : IUserPointsService
 		Guid userId,
 		CancellationToken cancellationToken)
 	{
-		if(actorUserId == Guid.Empty
-		   || userId == Guid.Empty
-		   || string.IsNullOrWhiteSpace(actorUserPassword))
+		var auth = await AuthorizeReadAsync(actorUserId, actorUserPassword, userId, cancellationToken);
+		if(auth.Error is not null)
 		{
-			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.ValidationFailed);
-		}
-
-		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!actorAuth.IsSuccess)
-		{
-			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.InvalidCredentials);
-		}
-
-		var actor = actorAuth.Actor!;
-		if(actorUserId != userId)
-		{
-			if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
-			{
-				return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(UserPointsError.Forbidden);
-			}
+			return UserPointsResult<IReadOnlyList<UserPointsTransactionModel>>.Fail(auth.Error.Value);
 		}
 
 		var list = await _transactions.GetTransactionsAsync(userId, excludeInitialization: true, cancellationToken);
@@ -103,11 +71,7 @@ public sealed class UserPointsService : IUserPointsService
 			? null
 			: taskId;
 
-		if(actorUserId == Guid.Empty
-		   || userId == Guid.Empty
-		   || string.IsNullOrWhiteSpace(actorUserPassword)
-		   || amount == 0
-		   || comment.Length == 0)
+		if(userId == Guid.Empty || amount == 0 || comment.Length == 0)
 		{
 			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
 		}
@@ -122,16 +86,10 @@ public sealed class UserPointsService : IUserPointsService
 			return UserPointsResult<Guid>.Fail(UserPointsError.ValidationFailed);
 		}
 
-		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
-		if(!actorAuth.IsSuccess)
+		var auth = await AuthorizeCoordinatorWriteAsync(actorUserId, actorUserPassword, userId, cancellationToken);
+		if(auth.Error is not null)
 		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.InvalidCredentials);
-		}
-
-		var actor = actorAuth.Actor!;
-		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
-		{
-			return UserPointsResult<Guid>.Fail(UserPointsError.Forbidden);
+			return UserPointsResult<Guid>.Fail(auth.Error.Value);
 		}
 
 		var currentBalance = await _transactions.GetBalanceAsync(userId, cancellationToken);
@@ -158,5 +116,74 @@ public sealed class UserPointsService : IUserPointsService
 		return id is null
 			? UserPointsResult<Guid>.Fail(UserPointsError.UserNotFound)
 			: UserPointsResult<Guid>.Ok(id.Value);
+	}
+
+	private async Task<(UserPointsError? Error, UserInternalModel? Actor)> AuthorizeReadAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		if(userId == Guid.Empty)
+		{
+			return (UserPointsError.ValidationFailed, null);
+		}
+
+		var auth = await AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(auth.Error is not null)
+		{
+			return auth;
+		}
+
+		if(actorUserId != userId && !UserRoleRules.HasCoordinatorAccess(auth.Actor!.Role))
+		{
+			return (UserPointsError.Forbidden, null);
+		}
+
+		return auth;
+	}
+
+	private async Task<(UserPointsError? Error, UserInternalModel? Actor)> AuthorizeCoordinatorWriteAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		if(userId == Guid.Empty)
+		{
+			return (UserPointsError.ValidationFailed, null);
+		}
+
+		var auth = await AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(auth.Error is not null)
+		{
+			return auth;
+		}
+
+		if(!UserRoleRules.HasCoordinatorAccess(auth.Actor!.Role))
+		{
+			return (UserPointsError.Forbidden, null);
+		}
+
+		return auth;
+	}
+
+	private async Task<(UserPointsError? Error, UserInternalModel? Actor)> AuthenticateAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		if(actorUserId == Guid.Empty || string.IsNullOrWhiteSpace(actorUserPassword))
+		{
+			return (UserPointsError.ValidationFailed, null);
+		}
+
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+		if(!actorAuth.IsSuccess)
+		{
+			return (UserPointsError.InvalidCredentials, null);
+		}
+
+		return (null, actorAuth.Actor);
 	}
 }

@@ -8,13 +8,16 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 {
 	private readonly IRegionRepository _regions;
 	private readonly ISettlementRepository _settlements;
-	private readonly IUserRepository _users;
+	private readonly IActorAccessService _actorAccess;
 
-	public GeoDirectoryService(IRegionRepository regions, ISettlementRepository settlements, IUserRepository users)
+	public GeoDirectoryService(
+		IRegionRepository regions,
+		ISettlementRepository settlements,
+		IActorAccessService actorAccess)
 	{
-		_regions = regions;
-		_settlements = settlements;
-		_users = users;
+		_regions = regions ?? throw new ArgumentNullException(nameof(regions));
+		_settlements = settlements ?? throw new ArgumentNullException(nameof(settlements));
+		_actorAccess = actorAccess ?? throw new ArgumentNullException(nameof(actorAccess));
 	}
 
 	public Task<IReadOnlyList<RegionModel>> GetRegionsAsync(CancellationToken cancellationToken)
@@ -229,19 +232,13 @@ public sealed class GeoDirectoryService : IGeoDirectoryService
 
 	private async Task<bool> HasAdminAccessAsync(Guid actorUserId, string actorPassword, CancellationToken cancellationToken)
 	{
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorPassword, cancellationToken);
-		if(!ok)
+		var auth = await _actorAccess.AuthenticateAsync(actorUserId, actorPassword, cancellationToken);
+		if(!auth.IsSuccess)
 		{
 			return false;
 		}
 
-		var actor = await _users.GetInternalByIdAsync(actorUserId, cancellationToken);
-		if(actor is null)
-		{
-			return false;
-		}
-
-		return UserRoleRules.IsAdmin(actor.Role);
+		return UserRoleRules.IsAdmin(auth.Actor!.Role);
 	}
 
 	private static string NormalizeName(string? value)

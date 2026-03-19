@@ -1,8 +1,10 @@
 ﻿using LdprActivistDemo.Application.Geo;
+using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Users;
+using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -39,6 +41,7 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IRegionRepository, RegionRepository>();
 		services.AddScoped<ISettlementRepository, SettlementRepository>();
 		services.AddScoped<IUserRepository, UserRepository>();
+		services.AddScoped<IImageRepository, ImageRepository>();
 		services.AddScoped<LdprActivistDemo.Application.UserPoints.IUserPointsTransactionRepository, UserPointsTransactionRepository>();
 		services.AddScoped<IPasswordResetRepository, PasswordResetRepository>();
 		services.AddScoped<ITaskRepository, TaskRepository>();

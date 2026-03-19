@@ -14,6 +14,9 @@ using TaskStatus = LdprActivistDemo.Contracts.Tasks.TaskStatus;
 
 namespace LdprActivistDemo.Api.Controllers;
 
+/// <summary>
+/// Эндпоинты работы с задачами и заявками на выполнение задач.
+/// </summary>
 [ApiController]
 [Route("api/v1/tasks")]
 public sealed class TasksController : ControllerBase
@@ -142,6 +145,23 @@ public sealed class TasksController : ControllerBase
 		}
 	}
 
+	/// <summary>
+	/// Создаёт новую задачу.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна пользователю с ролью <c>coordinator</c> или <c>admin</c>.
+	/// Тело запроса передаётся как <c>multipart/form-data</c>, потому что задача может содержать обложку.
+	/// Для <c>verificationType=auto</c> параметр <c>autoVerificationActionType</c> обязателен.
+	/// </remarks>
+	/// <param name="actorUserId">Идентификатор пользователя, создающего задачу.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Поля создаваемой задачи.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Задача успешно создана.</response>
+	/// <response code="400">Переданы некорректные параметры задачи, файлов или географии.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет прав на создание задач.</response>
+	/// <response code="404">Один из связанных объектов не найден.</response>
 	[HttpPost]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(CreateTaskResponse), StatusCodes.Status201Created)]
@@ -270,6 +290,23 @@ public sealed class TasksController : ControllerBase
 		return Created($"/api/v1/tasks/{result.Value}", new CreateTaskResponse(result.Value));
 	}
 
+	/// <summary>
+	/// Обновляет существующую задачу.
+	/// </summary>
+	/// <remarks>
+	/// Обновление доступно автору задачи, доверенному координатору задачи или администратору
+	/// в соответствии с серверными правилами доступа. Тело запроса передаётся как <c>multipart/form-data</c>.
+	/// </remarks>
+	/// <param name="taskId">Идентификатор задачи.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Новые данные задачи.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Задача успешно обновлена.</response>
+	/// <response code="400">Переданы некорректные параметры задачи, файлов или географии.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет прав на изменение задачи.</response>
+	/// <response code="404">Задача или связанный объект не найдены.</response>
 	[HttpPut("{taskId:guid}")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -394,6 +431,20 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Закрывает задачу.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна автору задачи или администратору.
+	/// </remarks>
+	/// <param name="taskId">Идентификатор задачи.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Задача успешно закрыта.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет прав на закрытие задачи.</response>
+	/// <response code="404">Задача не найдена.</response>
 	[HttpPost("{taskId:guid}/close")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -415,6 +466,20 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Открывает ранее закрытую задачу.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна автору задачи или администратору.
+	/// </remarks>
+	/// <param name="taskId">Идентификатор задачи.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Задача успешно открыта.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет прав на открытие задачи.</response>
+	/// <response code="404">Задача не найдена.</response>
 	[HttpPost("{taskId:guid}/open")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -436,6 +501,13 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Возвращает публичную карточку задачи по идентификатору.
+	/// </summary>
+	/// <param name="taskId">Идентификатор задачи.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Задача найдена и успешно возвращена.</response>
+	/// <response code="404">Задача не найдена.</response>
 	[HttpGet("{taskId:guid}")]
 	[ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -452,6 +524,28 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
+	/// <summary>
+	/// Возвращает ленту задач для координатора или администратора.
+	/// </summary>
+	/// <remarks>
+	/// Можно запрашивать только свои задачи, задачи по географии или общую доступную подборку.
+	/// Поддерживаются фильтрация по статусу, сортировка по дате публикации и дедлайну, а также пагинация по диапазону.
+	/// </remarks>
+	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="onlyMine">Если <see langword="true"/>, возвращаются только задачи автора/ответственного координатора.</param>
+	/// <param name="regionName">Опциональный фильтр по региону.</param>
+	/// <param name="settlementName">Опциональный фильтр по населённому пункту. Допустим только вместе с <c>regionName</c>.</param>
+	/// <param name="status">Опциональный фильтр по статусу задачи: <c>open</c> или <c>closed</c>.</param>
+	/// <param name="sort">Правило сортировки ленты.</param>
+	/// <param name="includeExpiredDeadlines">Включать ли задачи с уже истёкшим дедлайном.</param>
+	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Лента задач успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет доступа к административной ленте.</response>
 	[HttpGet("feed/coordinator")]
 	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -531,6 +625,8 @@ public sealed class TasksController : ControllerBase
 
 			for(var i = 0; i < taskIds.Count; i++)
 			{
+				cancellationToken.ThrowIfCancellationRequested();
+
 				var r = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
 				if(r.IsSuccess && r.Value is not null)
 				{
@@ -563,10 +659,29 @@ public sealed class TasksController : ControllerBase
 		var nowUtc = DateTimeOffset.UtcNow;
 		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
 
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var dtos = ordered.Select(ToDto).ToList();
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
+	/// <summary>
+	/// Возвращает ленту задач, доступных текущему пользователю по его географии и правам.
+	/// </summary>
+	/// <remarks>
+	/// В результирующую ленту попадают только открытые задачи.
+	/// </remarks>
+	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="sort">Правило сортировки ленты.</param>
+	/// <param name="includeExpiredDeadlines">Включать ли задачи с уже истёкшим дедлайном.</param>
+	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Лента задач успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные параметры пагинации или сортировки.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("feed/user")]
 	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -621,10 +736,30 @@ public sealed class TasksController : ControllerBase
 		var nowUtc = DateTimeOffset.UtcNow;
 		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
 
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var dtos = ordered.Select(ToDto).ToList();
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
+	/// <summary>
+	/// Создаёт черновую заявку пользователя на выполнение задачи.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может создавать заявку только от собственного имени, поэтому <c>userId</c>
+	/// должен совпадать с <c>actorUserId</c>.
+	/// Для задач с авто-подтверждением сервер может сразу завершить заявку автоматически.
+	/// </remarks>
+	/// <param name="taskId">Идентификатор задачи.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, отправляющего заявку.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="userId">Идентификатор пользователя, для которого создаётся заявка. Должен совпадать с <c>actorUserId</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Заявка успешно создана или зафиксирована сервером.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Задача или пользователь не найдены.</response>
+	/// <response code="409">Создание заявки недопустимо в текущем состоянии задачи или заявки.</response>
 	[HttpPost("{taskId:guid}/submit")]
 	[ProducesResponseType(StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -661,6 +796,23 @@ public sealed class TasksController : ControllerBase
 		return StatusCode(StatusCodes.Status201Created);
 	}
 
+	/// <summary>
+	/// Отправляет ранее созданную заявку на ручную проверку координатором.
+	/// </summary>
+	/// <remarks>
+	/// Тело запроса передаётся как <c>multipart/form-data</c>. Можно приложить текстовое доказательство
+	/// и набор фотографий. Для задач с <c>verificationType=auto</c> эндпоинт недоступен.
+	/// </remarks>
+	/// <param name="submitId">Идентификатор заявки.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, владеющего заявкой.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Материалы заявки для ручной проверки.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Заявка успешно отправлена на проверку.</response>
+	/// <response code="400">Переданы некорректные данные формы или файлов.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Заявка или задача не найдены.</response>
+	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPost("submit/{submitId:guid}/for-review")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -695,6 +847,8 @@ public sealed class TasksController : ControllerBase
 
 			for(var i = 0; i < request.Photos.Count; i++)
 			{
+				cancellationToken.ThrowIfCancellationRequested();
+
 				var f = request.Photos[i];
 				var err = UploadedImageReader.ValidateImage(f);
 				if(err is not null)
@@ -722,6 +876,23 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Обновляет содержимое уже существующей заявки.
+	/// </summary>
+	/// <remarks>
+	/// Тело запроса передаётся как <c>multipart/form-data</c>. Для задач с <c>verificationType=auto</c>
+	/// эндпоинт недоступен.
+	/// </remarks>
+	/// <param name="submitId">Идентификатор заявки.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, владеющего заявкой.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Обновлённые данные заявки.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Заявка успешно обновлена.</response>
+	/// <response code="400">Переданы некорректные данные формы или файлов.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Заявка или задача не найдены.</response>
+	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPut("submit/{submitId:guid}")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -756,6 +927,8 @@ public sealed class TasksController : ControllerBase
 
 			for(var i = 0; i < request.Photos.Count; i++)
 			{
+				cancellationToken.ThrowIfCancellationRequested();
+
 				var f = request.Photos[i];
 				var err = UploadedImageReader.ValidateImage(f);
 				if(err is not null)
@@ -783,6 +956,27 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Возвращает административную ленту заявок для координатора или администратора.
+	/// </summary>
+	/// <remarks>
+	/// Поддерживаются фильтрация по статусу решения, задаче, пользователю и сортировка
+	/// по времени отправки или принятия решения.
+	/// </remarks>
+	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="status">Опциональный фильтр по статусу заявки: <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.</param>
+	/// <param name="taskId">Опциональный фильтр по задаче.</param>
+	/// <param name="userId">Опциональный фильтр по пользователю.</param>
+	/// <param name="sort">Правило сортировки ленты.</param>
+	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Лента заявок успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет доступа к административной ленте заявок.</response>
+	/// <response code="404">Связанный объект не найден.</response>
 	[HttpGet("submit/feed/coordinator")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -850,10 +1044,31 @@ public sealed class TasksController : ControllerBase
 		}
 
 		var ordered = ApplySubmissionSorting(result.Value, sort);
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var dtos = ordered.Select(ToDto).ToList();
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
+	/// <summary>
+	/// Возвращает пользовательскую ленту собственных заявок.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может запрашивать только свои заявки, поэтому <c>userId</c> должен совпадать с <c>actorUserId</c>.
+	/// </remarks>
+	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="taskId">Опциональный фильтр по задаче.</param>
+	/// <param name="userId">Идентификатор пользователя-владельца заявок. Должен совпадать с <c>actorUserId</c>.</param>
+	/// <param name="status">Опциональный фильтр по статусу заявки: <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.</param>
+	/// <param name="sort">Правило сортировки ленты.</param>
+	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Лента заявок успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Связанный объект не найден.</response>
 	[HttpGet("submit/feed/user")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -926,10 +1141,26 @@ public sealed class TasksController : ControllerBase
 		}
 
 		var ordered = ApplySubmissionSorting(result.Value, sort);
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var dtos = ordered.Select(ToDto).ToList();
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
+	/// <summary>
+	/// Возвращает подробную информацию о заявке по её идентификатору.
+	/// </summary>
+	/// <remarks>
+	/// Доступ зависит от роли пользователя и его отношения к заявке и задаче.
+	/// </remarks>
+	/// <param name="submitId">Идентификатор заявки.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего заявку.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Заявка успешно возвращена.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет доступа к заявке.</response>
+	/// <response code="404">Заявка не найдена.</response>
 	[HttpGet("submit/{submitId:guid}")]
 	[ProducesResponseType(typeof(SubmissionDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -956,6 +1187,27 @@ public sealed class TasksController : ControllerBase
 		return Ok(ToDto(result.Value));
 	}
 
+	/// <summary>
+	/// Возвращает пользователей, связанных с задачей, либо количество таких пользователей.
+	/// </summary>
+	/// <remarks>
+	/// Если <c>taskStatus</c> не указан, возвращаются пользователи подходящей географии,
+	/// которые ещё не создали заявку по задаче. Если указан статус, выбираются пользователи
+	/// по состоянию их заявок. Формат ответа задаётся параметром <c>responseFormat</c>.
+	/// </remarks>
+	/// <param name="taskId">Идентификатор задачи.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего данные.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="taskStatus">Опциональный фильтр по состоянию заявки: <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.</param>
+	/// <param name="responseFormat">Формат ответа: список пользователей или только количество.</param>
+	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Информация о пользователях успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные параметры фильтрации или пагинации.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет доступа к задаче.</response>
+	/// <response code="404">Задача не найдена.</response>
 	[HttpGet("{taskId:guid}/feed/users")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(UsersCountResponse), StatusCodes.Status200OK)]
@@ -1038,10 +1290,29 @@ public sealed class TasksController : ControllerBase
 			return Ok(new UsersCountResponse(result.Value.Count));
 		}
 
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var dtos = result.Value.Select(ToUserDto).ToList();
 		return Ok(ApplyFeedPagination(dtos, start, end));
 	}
 
+	/// <summary>
+	/// Одобряет заявку пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна автору задачи, доверенному координатору задачи или администратору.
+	/// При успешном одобрении пользователю может быть начислена награда задачи.
+	/// </remarks>
+	/// <param name="submitId">Идентификатор заявки.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, принимающего решение.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Заявка успешно одобрена.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет прав на одобрение заявки.</response>
+	/// <response code="404">Заявка или задача не найдены.</response>
+	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPost("submit/{submitId:guid}/approve")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -1065,6 +1336,22 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Отклоняет заявку пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна автору задачи, доверенному координатору задачи или администратору.
+	/// </remarks>
+	/// <param name="submitId">Идентификатор заявки.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, принимающего решение.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Заявка успешно отклонена.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не имеет прав на отклонение заявки.</response>
+	/// <response code="404">Заявка или задача не найдены.</response>
+	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPost("submit/{submitId:guid}/reject")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -1088,47 +1375,161 @@ public sealed class TasksController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapTaskError(result.Error);
 	}
 
+	/// <summary>
+	/// Модель <c>multipart/form-data</c> для создания задачи.
+	/// </summary>
 	public sealed class CreateTaskFormRequest
 	{
+		/// <summary>
+		/// Заголовок задачи.
+		/// </summary>
 		public string Title { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Подробное описание задачи.
+		/// </summary>
 		public string Description { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Дополнительные требования к выполнению задачи.
+		/// </summary>
 		public string? RequirementsText { get; set; }
+
+		/// <summary>
+		/// Награда за выполнение задачи в баллах.
+		/// </summary>
 		public int RewardPoints { get; set; }
+
+		/// <summary>
+		/// Тип верификации задачи: <c>manual</c> или <c>auto</c>.
+		/// </summary>
 		public string? VerificationType { get; set; }
+
+		/// <summary>
+		/// Тип повторного использования задачи: <c>disposable</c> или <c>reusable</c>.
+		/// </summary>
 		public string? ReuseType { get; set; }
+
+		/// <summary>
+		/// Действие для авто-верификации: <c>invite_friend</c>, <c>first_login</c> или <c>auto</c>.
+		/// </summary>
 		public string? AutoVerificationActionType { get; set; }
 
+		/// <summary>
+		/// Файл обложки задачи.
+		/// </summary>
 		public IFormFile? CoverImage { get; set; }
 
+		/// <summary>
+		/// Произвольное текстовое описание места выполнения задачи.
+		/// </summary>
 		public string? ExecutionLocation { get; set; }
+
+		/// <summary>
+		/// Дедлайн выполнения задачи в UTC.
+		/// </summary>
 		public DateTimeOffset? DeadlineAt { get; set; }
+
+		/// <summary>
+		/// Название региона выполнения задачи.
+		/// </summary>
 		public string RegionName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Название населённого пункта выполнения задачи. Может быть пустым для задач уровня региона.
+		/// </summary>
 		public string? SettlementName { get; set; }
+
+		/// <summary>
+		/// Идентификаторы доверенных координаторов задачи.
+		/// </summary>
 		public List<Guid>? TrustedCoordinatorIds { get; set; }
 	}
 
+	/// <summary>
+	/// Модель <c>multipart/form-data</c> для обновления задачи.
+	/// </summary>
 	public sealed class UpdateTaskFormRequest
 	{
+		/// <summary>
+		/// Заголовок задачи.
+		/// </summary>
 		public string Title { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Подробное описание задачи.
+		/// </summary>
 		public string Description { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Дополнительные требования к выполнению задачи.
+		/// </summary>
 		public string? RequirementsText { get; set; }
+
+		/// <summary>
+		/// Награда за выполнение задачи в баллах.
+		/// </summary>
 		public int RewardPoints { get; set; }
+
+		/// <summary>
+		/// Новый тип верификации задачи: <c>manual</c> или <c>auto</c>.
+		/// </summary>
 		public string? VerificationType { get; set; }
+
+		/// <summary>
+		/// Новый тип повторного использования задачи: <c>disposable</c> или <c>reusable</c>.
+		/// </summary>
 		public string? ReuseType { get; set; }
+
+		/// <summary>
+		/// Новое действие для авто-верификации: <c>invite_friend</c>, <c>first_login</c> или <c>auto</c>.
+		/// </summary>
 		public string? AutoVerificationActionType { get; set; }
 
+		/// <summary>
+		/// Новый файл обложки задачи.
+		/// </summary>
 		public IFormFile? CoverImage { get; set; }
 
+		/// <summary>
+		/// Произвольное текстовое описание места выполнения задачи.
+		/// </summary>
 		public string? ExecutionLocation { get; set; }
+
+		/// <summary>
+		/// Новый дедлайн выполнения задачи в UTC.
+		/// </summary>
 		public DateTimeOffset? DeadlineAt { get; set; }
+
+		/// <summary>
+		/// Название региона выполнения задачи.
+		/// </summary>
 		public string RegionName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Название населённого пункта выполнения задачи. Может быть пустым для задач уровня региона.
+		/// </summary>
 		public string? SettlementName { get; set; }
+
+		/// <summary>
+		/// Идентификаторы доверенных координаторов задачи.
+		/// </summary>
 		public List<Guid>? TrustedCoordinatorIds { get; set; }
 	}
 
+	/// <summary>
+	/// Модель <c>multipart/form-data</c> для отправки или обновления материалов заявки.
+	/// </summary>
 	public sealed class SubmitTaskFormRequest
 	{
+		/// <summary>
+		/// Текстовое доказательство выполнения задачи.
+		/// </summary>
 		public string? ProofText { get; set; }
+
+		/// <summary>
+		/// Фотографии, подтверждающие выполнение задачи.
+		/// </summary>
 		public List<IFormFile>? Photos { get; set; }
 	}
 

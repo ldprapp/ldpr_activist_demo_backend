@@ -16,6 +16,8 @@ public sealed class MockOtpSender : IOtpSender
 
 	public Task SendAsync(string phoneNumber, string code, CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		phoneNumber = (phoneNumber ?? string.Empty).Trim();
 
 		if(_environment.IsDevelopment())

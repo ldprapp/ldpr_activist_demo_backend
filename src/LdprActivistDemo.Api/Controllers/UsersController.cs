@@ -12,6 +12,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LdprActivistDemo.Api.Controllers;
 
+/// <summary>
+/// Эндпоинты регистрации, аутентификации, профиля пользователя и ролей.
+/// </summary>
 [ApiController]
 [Route("api/v1/users")]
 public sealed class UsersController : ControllerBase
@@ -39,6 +42,19 @@ public sealed class UsersController : ControllerBase
 		Count = 1,
 	}
 
+	/// <summary>
+	/// Регистрирует нового пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Тело запроса передаётся как <c>multipart/form-data</c>, чтобы при необходимости
+	/// можно было сразу загрузить аватар пользователя.
+	/// </remarks>
+	/// <param name="request">Данные регистрируемого пользователя.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Пользователь успешно зарегистрирован.</response>
+	/// <response code="400">Переданы некорректные данные регистрации или файла аватара.</response>
+	/// <response code="409">Пользователь с таким номером телефона уже существует.</response>
+	/// <response code="500">Произошла внутренняя ошибка сервера.</response>
 	[HttpPost("register")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(UserIdResponse), StatusCodes.Status201Created)]
@@ -92,6 +108,10 @@ public sealed class UsersController : ControllerBase
 
 			return Created($"/api/v1/users/{userId}", new UserIdResponse(userId));
 		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
 		catch(InvalidOperationException ex) when(IsPhoneDuplicate(ex))
 		{
 			return this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.PhoneAlreadyExists, "Телефон уже занят.", "Пользователь с таким номером телефона уже существует.");
@@ -110,6 +130,17 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
+	/// <summary>
+	/// Отправляет OTP-код на указанный номер телефона.
+	/// </summary>
+	/// <remarks>
+	/// Эндпоинт используется для подтверждения телефона при регистрации.
+	/// </remarks>
+	/// <param name="request">Тело запроса с номером телефона.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">OTP-код успешно отправлен.</response>
+	/// <response code="400">Передан пустой или некорректный номер телефона.</response>
+	/// <response code="500">Не удалось отправить OTP-код.</response>
 	[HttpPost("send-otp")]
 	[ProducesResponseType(typeof(SendOtpResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -157,6 +188,10 @@ public sealed class UsersController : ControllerBase
 			await _otp.IssueAsync(request.PhoneNumber, cancellationToken);
 			return Ok(new SendOtpResponse(true));
 		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
 		catch(Exception)
 		{
 			return this.ProblemWithCode(
@@ -167,6 +202,20 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
+	/// <summary>
+	/// Инициирует процедуру сброса пароля по номеру телефона.
+	/// </summary>
+	/// <remarks>
+	/// Если пользователь существует и его телефон подтверждён, сервер сохранит новый пароль во временное хранилище
+	/// и отправит OTP-код для подтверждения операции.
+	/// </remarks>
+	/// <param name="request">Тело запроса с номером телефона и новым паролем.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Запрос на сброс пароля успешно создан.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="404">Пользователь с указанным номером телефона не найден.</response>
+	/// <response code="409">Телефон пользователя ещё не подтверждён.</response>
+	/// <response code="500">Произошла внутренняя ошибка или не удалось отправить OTP.</response>
 	[HttpPost("password-reset/request")]
 	[ProducesResponseType(typeof(RequestPasswordResetResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -242,6 +291,16 @@ public sealed class UsersController : ControllerBase
 		};
 	}
 
+	/// <summary>
+	/// Подтверждает сброс пароля по номеру телефона и OTP-коду.
+	/// </summary>
+	/// <param name="request">Тело запроса с номером телефона и OTP-кодом.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Пароль успешно изменён.</response>
+	/// <response code="400">Переданы некорректные данные запроса или неверный OTP-код.</response>
+	/// <response code="404">Пользователь не найден.</response>
+	/// <response code="409">Телефон не подтверждён или запрос на сброс пароля уже истёк.</response>
+	/// <response code="500">Произошла внутренняя ошибка сервера.</response>
 	[HttpPost("password-reset/confirm")]
 	[ProducesResponseType(typeof(ConfirmPasswordResetResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -322,6 +381,14 @@ public sealed class UsersController : ControllerBase
 		};
 	}
 
+	/// <summary>
+	/// Подтверждает номер телефона пользователя по OTP-коду.
+	/// </summary>
+	/// <param name="request">Тело запроса с номером телефона и OTP-кодом.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Номер телефона успешно подтверждён.</response>
+	/// <response code="400">Переданы некорректные данные запроса или неверный OTP-код.</response>
+	/// <response code="409">Телефон уже был подтверждён ранее.</response>
 	[HttpPost("confirm-phone")]
 	[ProducesResponseType(typeof(ConfirmPhoneResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -380,6 +447,14 @@ public sealed class UsersController : ControllerBase
 		return Ok(new ConfirmPhoneResponse(true));
 	}
 
+	/// <summary>
+	/// Выполняет вход пользователя по номеру телефона и паролю.
+	/// </summary>
+	/// <param name="request">Тело запроса с номером телефона и паролем.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Аутентификация выполнена успешно.</response>
+	/// <response code="401">Номер телефона не найден или пароль неверный.</response>
+	/// <response code="409">Телефон найден, но ещё не подтверждён.</response>
 	[HttpPost("login")]
 	[ProducesResponseType(typeof(LoginOkResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -422,6 +497,14 @@ public sealed class UsersController : ControllerBase
 		};
 	}
 
+	/// <summary>
+	/// Возвращает публичные данные пользователя по номеру телефона.
+	/// </summary>
+	/// <param name="phoneNumber">Номер телефона пользователя.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Пользователь найден и успешно возвращён.</response>
+	/// <response code="400">Передан номер телефона в некорректном формате.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("by-phone/{phoneNumber}")]
 	[ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -446,6 +529,13 @@ public sealed class UsersController : ControllerBase
 		return Ok(ToDto(u));
 	}
 
+	/// <summary>
+	/// Возвращает публичные данные пользователя по идентификатору.
+	/// </summary>
+	/// <param name="id">Идентификатор пользователя.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Пользователь найден и успешно возвращён.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("{id:guid}")]
 	[ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -460,6 +550,22 @@ public sealed class UsersController : ControllerBase
 		return Ok(ToDto(u));
 	}
 
+	/// <summary>
+	/// Изменяет пароль пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может изменить только собственный пароль. Старый пароль в теле запроса
+	/// должен совпадать с паролем, переданным в заголовке <c>X-Actor-Password</c>.
+	/// </remarks>
+	/// <param name="id">Идентификатор пользователя, чей пароль изменяется.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Текущий пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Тело запроса со старым и новым паролем.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Пароль успешно изменён.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpPut("{id:guid}/password")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -520,6 +626,23 @@ public sealed class UsersController : ControllerBase
 		return NoContent();
 	}
 
+	/// <summary>
+	/// Обновляет профиль пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может изменять только собственный профиль. Тело запроса передаётся как
+	/// <c>multipart/form-data</c>, чтобы можно было загрузить новый аватар.
+	/// </remarks>
+	/// <param name="id">Идентификатор пользователя, чей профиль обновляется.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="request">Обновлённые данные профиля пользователя.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Профиль успешно обновлён.</response>
+	/// <response code="400">Переданы некорректные данные профиля или файла аватара.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Пользователь не найден.</response>
+	/// <response code="409">Обновление не удалось из-за конфликта данных.</response>
 	[HttpPut("{id:guid}")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -608,6 +731,23 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
+	/// <summary>
+	/// Изменяет номер телефона пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Пользователь может изменить только собственный номер телефона. Для подтверждения нового номера
+	/// требуется OTP-код, ранее отправленный на этот номер.
+	/// </remarks>
+	/// <param name="id">Идентификатор пользователя, чей номер телефона изменяется.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="request">Тело запроса с новым номером телефона и OTP-кодом.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Номер телефона успешно изменён.</response>
+	/// <response code="400">Переданы некорректные данные запроса или неверный OTP-код.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Пользователь не найден.</response>
+	/// <response code="409">Новый номер телефона уже занят.</response>
 	[HttpPut("{id:guid}/phone")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -687,6 +827,22 @@ public sealed class UsersController : ControllerBase
 		}
 	}
 
+	/// <summary>
+	/// Возвращает ленту пользователей с фильтрацией и опциональной пагинацией.
+	/// </summary>
+	/// <remarks>
+	/// Поддерживается фильтрация по роли и географии. Формат ответа задаётся параметром
+	/// <c>responseFormat</c>: список пользователей или только количество.
+	/// </remarks>
+	/// <param name="role">Опциональный фильтр по роли: <c>activist</c>, <c>coordinator</c> или <c>admin</c>.</param>
+	/// <param name="regionName">Опциональный фильтр по региону.</param>
+	/// <param name="settlementName">Опциональный фильтр по населённому пункту. Допустим только вместе с <c>regionName</c>.</param>
+	/// <param name="responseFormat">Формат ответа: список пользователей или только количество.</param>
+	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Лента пользователей успешно возвращена.</response>
+	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
 	[HttpGet("feed")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(UsersCountResponse), StatusCodes.Status200OK)]
@@ -727,16 +883,25 @@ public sealed class UsersController : ControllerBase
 		UserRoleRules.TryNormalizeOptionalRole(role, out var normalizedRole, out _);
 
 		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
 
 		if(string.Equals(normalizedResponseFormat, UserResponseFormat.Count, StringComparison.Ordinal))
 		{
 			return Ok(new UsersCountResponse(users.Count));
 		}
 
+		cancellationToken.ThrowIfCancellationRequested();
 		var dtos = users.Select(ToDto).ToList();
 		return Ok(ApplyUsersPagination(dtos, start, end));
 	}
 
+	/// <summary>
+	/// Возвращает текущую роль пользователя.
+	/// </summary>
+	/// <param name="id">Идентификатор пользователя.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Роль пользователя успешно возвращена.</response>
+	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("{id:guid}/role")]
 	[ProducesResponseType(typeof(UserRoleResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -751,6 +916,22 @@ public sealed class UsersController : ControllerBase
 		return Ok(new UserRoleResponse(role));
 	}
 
+	/// <summary>
+	/// Выдаёт пользователю роль координатора.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// </remarks>
+	/// <param name="id">Идентификатор пользователя, которому выдаётся роль координатора.</param>
+	/// <param name="actorUserId">Идентификатор администратора, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль администратора из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Роль координатора успешно выдана.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Операция доступна только администратору.</response>
+	/// <response code="404">Пользователь не найден.</response>
+	/// <response code="409">Изменение роли запрещено правилами системы.</response>
 	[HttpPut("{id:guid}/role/coordinator")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -774,6 +955,22 @@ public sealed class UsersController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapUserRoleChangeError(result.Error);
 	}
 
+	/// <summary>
+	/// Забирает у пользователя роль координатора.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// </remarks>
+	/// <param name="id">Идентификатор пользователя, у которого забирается роль координатора.</param>
+	/// <param name="actorUserId">Идентификатор администратора, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль администратора из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Роль координатора успешно отозвана.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Операция доступна только администратору.</response>
+	/// <response code="404">Пользователь не найден.</response>
+	/// <response code="409">Изменение роли запрещено правилами системы.</response>
 	[HttpDelete("{id:guid}/role/coordinator")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -983,31 +1180,105 @@ public sealed class UsersController : ControllerBase
 				"Внутренняя ошибка."),
 		};
 
+	/// <summary>
+	/// Модель <c>multipart/form-data</c> для регистрации пользователя.
+	/// </summary>
 	public sealed class RegisterUserFormRequest
 	{
+		/// <summary>
+		/// Фамилия пользователя.
+		/// </summary>
 		public string LastName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Имя пользователя.
+		/// </summary>
 		public string FirstName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Отчество пользователя.
+		/// </summary>
 		public string? MiddleName { get; set; }
+
+		/// <summary>
+		/// Пол пользователя. Допустимые значения нормализуются сервером к <c>male</c> или <c>female</c>.
+		/// </summary>
 		public string? Gender { get; set; }
+
+		/// <summary>
+		/// Номер телефона пользователя.
+		/// </summary>
 		public string PhoneNumber { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Пароль пользователя.
+		/// </summary>
 		public string Password { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Дата рождения пользователя.
+		/// </summary>
 		public DateOnly BirthDate { get; set; }
+
+		/// <summary>
+		/// Название региона проживания пользователя.
+		/// </summary>
 		public string RegionName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Название населённого пункта проживания пользователя.
+		/// </summary>
 		public string SettlementName { get; set; } = string.Empty;
 
+		/// <summary>
+		/// Файл аватара пользователя.
+		/// </summary>
 		public IFormFile? AvatarImage { get; set; }
 	}
 
+	/// <summary>
+	/// Модель <c>multipart/form-data</c> для обновления профиля пользователя.
+	/// </summary>
 	public sealed class UpdateUserFormRequest
 	{
+		/// <summary>
+		/// Фамилия пользователя.
+		/// </summary>
 		public string LastName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Имя пользователя.
+		/// </summary>
 		public string FirstName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Отчество пользователя.
+		/// </summary>
 		public string? MiddleName { get; set; }
+
+		/// <summary>
+		/// Пол пользователя. Допустимые значения нормализуются сервером к <c>male</c> или <c>female</c>.
+		/// </summary>
 		public string? Gender { get; set; }
+
+		/// <summary>
+		/// Дата рождения пользователя.
+		/// </summary>
 		public DateOnly BirthDate { get; set; }
+
+		/// <summary>
+		/// Название региона проживания пользователя.
+		/// </summary>
 		public string RegionName { get; set; } = string.Empty;
+
+		/// <summary>
+		/// Название населённого пункта проживания пользователя.
+		/// </summary>
 		public string SettlementName { get; set; } = string.Empty;
 
+		/// <summary>
+		/// Новый файл аватара пользователя.
+		/// </summary>
 		public IFormFile? AvatarImage { get; set; }
 	}
 

@@ -1,12 +1,10 @@
 using LdprActivistDemo.Api.Health;
 using LdprActivistDemo.Api.Middleware;
 using LdprActivistDemo.Application;
-using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Persistence;
-using LdprActivistDemo.Persistence.Repositories;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +19,17 @@ builder.Services.AddControllers()
 
 builder.Services.Configure<ApiBehaviorOptions>(o => o.SuppressModelStateInvalidFilter = true);
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(o =>
+{
+	var apiAssembly = typeof(Program).Assembly;
+	var xmlFile = $"{apiAssembly.GetName().Name}.xml";
+	var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+
+	if(File.Exists(xmlPath))
+	{
+		o.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+	}
+});
 
 builder.Services.AddSingleton<IBackendVersionProvider, BackendVersionProvider>();
 
@@ -29,7 +37,6 @@ builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 builder.Services.Configure<PasswordResetOptions>(builder.Configuration.GetSection("PasswordReset"));
 builder.Services.AddApplication();
 builder.Services.AddPersistence(builder.Configuration);
-builder.Services.AddScoped<IImageRepository, ImageRepository>();
 
 var app = builder.Build();
 
@@ -49,7 +56,6 @@ await using(var scope = app.Services.CreateAsyncScope())
 
 app.UseMiddleware<ApiExceptionHandlingMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseMiddleware<ExceptionDetailsMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.UseSwagger();

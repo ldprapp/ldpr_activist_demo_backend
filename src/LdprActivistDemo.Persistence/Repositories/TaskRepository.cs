@@ -145,6 +145,8 @@ public sealed class TaskRepository : ITaskRepository
 
 		foreach(var coordinatorId in trustedCoordinatorIds)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			_db.TaskTrustedCoordinators.Add(new TaskTrustedCoordinator
 			{
 				TaskId = entity.Id,
@@ -320,6 +322,8 @@ public sealed class TaskRepository : ITaskRepository
 		_db.TaskTrustedCoordinators.RemoveRange(existing);
 		foreach(var coordinatorId in trustedCoordinatorIds)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			_db.TaskTrustedCoordinators.Add(new TaskTrustedCoordinator
 			{
 				TaskId = task.Id,
@@ -622,17 +626,23 @@ public sealed class TaskRepository : ITaskRepository
 				x => (x.RegionName, x.SettlementName),
 				cancellationToken);
 
-		return tasks
-			.Select(t =>
-			{
-				var geo = geoMap[t.Id];
-				return ToModel(
-					t,
-					trustedMap.TryGetValue(t.Id, out var ids) ? ids : Array.Empty<Guid>(),
-					geo.RegionName,
-					geo.SettlementName);
-			})
- 			.ToList();
+		var result = new List<TaskModel>(tasks.Count);
+
+		for(var i = 0; i < tasks.Count; i++)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var task = tasks[i];
+			var geo = geoMap[task.Id];
+
+			result.Add(ToModel(
+				task,
+				trustedMap.TryGetValue(task.Id, out var ids) ? ids : Array.Empty<Guid>(),
+				geo.RegionName,
+				geo.SettlementName));
+		}
+
+		return result;
 	}
 
 	private static bool TryNormalizeVerificationTypeForCreate(string? raw, out string normalized)

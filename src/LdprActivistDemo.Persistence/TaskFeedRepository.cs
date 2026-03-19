@@ -10,13 +10,14 @@ public sealed class TaskFeedRepository : ITaskFeedRepository
 
 	public TaskFeedRepository(AppDbContext db)
 	{
-		_db = db;
+		_db = db ?? throw new ArgumentNullException(nameof(db));
 	}
 
 	public async Task<IReadOnlyList<Guid>> GetAllTaskIdsAsync(CancellationToken cancellationToken)
 		=> await _db.Tasks
 			.AsNoTracking()
 			.OrderByDescending(x => x.PublishedAt)
+			.ThenByDescending(x => x.Id)
 			.Select(x => x.Id)
 			.ToListAsync(cancellationToken);
 }

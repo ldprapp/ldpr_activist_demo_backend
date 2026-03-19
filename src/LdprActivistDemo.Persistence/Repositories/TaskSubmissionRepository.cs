@@ -200,6 +200,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		var added = newPhotoIds.Except(oldPhotoIds).ToArray();
 		foreach(var imageId in added)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			_db.TaskSubmissionImages.Add(new TaskSubmissionImage
 			{
 				SubmissionId = submission.Id,
@@ -348,6 +350,8 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			var added = newPhotoIds.Except(oldPhotoIds!).ToArray();
 			foreach(var imageId in added)
 			{
+				cancellationToken.ThrowIfCancellationRequested();
+
 				_db.TaskSubmissionImages.Add(new TaskSubmissionImage
 				{
 					SubmissionId = existing.Id,
@@ -635,12 +639,15 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			}
 		}
 
+		var isAdmin = UserRoleRules.IsAdmin(actor.Role);
+
 		IQueryable<Guid> accessibleTaskIds = _db.Tasks.AsNoTracking()
 			.Where(t =>
-				t.AuthorUserId == actorUserId
-				|| _db.TaskTrustedCoordinators.AsNoTracking().Any(x => x.TaskId == t.Id && x.CoordinatorUserId == actorUserId))
-			.Where(t => t.VerificationType != TaskVerificationType.Auto)
-			.Select(t => t.Id);
+			   isAdmin
+			   || t.AuthorUserId == actorUserId
+			   || _db.TaskTrustedCoordinators.AsNoTracking().Any(x => x.TaskId == t.Id && x.CoordinatorUserId == actorUserId))
+		   .Where(t => t.VerificationType != TaskVerificationType.Auto)
+		   .Select(t => t.Id);
 
 		if(taskId.HasValue)
 		{
@@ -663,8 +670,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var list = await query.ToListAsync(cancellationToken);
-		var mapped = list.Select(ToSubmissionModel).ToList();
-		return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(mapped);
+		return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(MapSubmissionModels(list, cancellationToken));
 	}
 
 	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetUserFeedAsync(
@@ -693,8 +699,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var list = await query.ToListAsync(cancellationToken);
-		var mapped = list.Select(ToSubmissionModel).ToList();
-		return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(mapped);
+		return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(MapSubmissionModels(list, cancellationToken));
 	}
 
 	public async Task<TaskOperationResult<TaskSubmissionModel>> GetByIdAsync(
@@ -786,7 +791,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var isAdmin = string.Equals(actor.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase);
-		if(task.AuthorUserId != actorUserId && !isAdmin)
+		var isTrustedCoordinator =
+			UserRoleRules.HasCoordinatorAccess(actor.Role)
+			&& await _db.TaskTrustedCoordinators
+				.AsNoTracking()
+				.AnyAsync(x => x.TaskId == taskId && x.CoordinatorUserId == actorUserId, cancellationToken);
+
+		if(task.AuthorUserId != actorUserId && !isAdmin && !isTrustedCoordinator)
 		{
 			return TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(TaskOperationError.Forbidden);
 		}
@@ -903,10 +914,25 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 	private async Task<TaskOperationError> EnsureAdminTaskAccessAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
+		var actor = await _db.Users.AsNoTracking()
+			.Select(x => new { x.Id, x.Role })
+			.FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
+		if(actor is null)
+		{
+			return TaskOperationError.InvalidCredentials;
+		}
+
 		var task = await _db.Tasks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == taskId, cancellationToken);
 		if(task is null)
 		{
 			return TaskOperationError.TaskNotFound;
+		}
+
+		if(UserRoleRules.IsAdmin(actor.Role))
+		{
+			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+				? TaskOperationError.TaskAutoVerificationNotSupported
+				: TaskOperationError.None;
 		}
 
 		if(task.AuthorUserId == actorUserId)
@@ -941,6 +967,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationError.TaskNotFound;
 		}
 
+		if(UserRoleRules.IsAdmin(actor.Role))
+		{
+			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
+				? TaskOperationError.TaskAutoVerificationNotSupported
+				: TaskOperationError.None;
+		}
+
 		if(task.AuthorUserId == actorUserId)
 		{
 			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
@@ -958,6 +991,25 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
 			? TaskOperationError.TaskAutoVerificationNotSupported
 			: TaskOperationError.None;
+	}
+
+	private static IReadOnlyList<TaskSubmissionModel> MapSubmissionModels(
+		IReadOnlyList<TaskSubmission> submissions,
+		CancellationToken cancellationToken)
+	{
+		if(submissions.Count == 0)
+		{
+			return Array.Empty<TaskSubmissionModel>();
+		}
+
+		var result = new List<TaskSubmissionModel>(submissions.Count);
+		for(var i = 0; i < submissions.Count; i++)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			result.Add(ToSubmissionModel(submissions[i]));
+		}
+
+		return result;
 	}
 
 	private static TaskSubmissionModel ToSubmissionModel(TaskSubmission s)

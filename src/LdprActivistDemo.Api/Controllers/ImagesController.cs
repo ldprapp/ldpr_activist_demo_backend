@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LdprActivistDemo.Api.Controllers;
 
+/// <summary>
+/// Эндпоинты работы с пользовательскими изображениями.
+/// </summary>
 [ApiController]
 [Route("api/v1/images")]
 public sealed class ImagesController : ControllerBase
@@ -20,6 +23,14 @@ public sealed class ImagesController : ControllerBase
 		_images = images ?? throw new ArgumentNullException(nameof(images));
 	}
 
+	/// <summary>
+	/// Возвращает бинарное содержимое пользовательского изображения по его идентификатору.
+	/// </summary>
+	/// <param name="id">Идентификатор изображения.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Изображение найдено и возвращено как файл.</response>
+	/// <response code="400">Передан пустой или некорректный идентификатор изображения.</response>
+	/// <response code="404">Изображение с указанным идентификатором не найдено.</response>
 	[HttpGet("{id:guid}")]
 	[ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -52,12 +63,30 @@ public sealed class ImagesController : ControllerBase
 		return File(img.Data, img.ContentType);
 	}
 
+	/// <summary>
+	/// Удаляет пользовательское изображение.
+	/// </summary>
+	/// <remarks>
+	/// Удаление доступно только владельцу изображения. Системные изображения и изображения,
+	/// которые используются как системные, этим эндпоинтом удалить нельзя.
+	/// </remarks>
+	/// <param name="id">Идентификатор изображения.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, от имени которого выполняется операция.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Изображение успешно удалено.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Пользователь не является владельцем изображения.</response>
+	/// <response code="404">Изображение не найдено.</response>
+	/// <response code="409">Изображение используется системой и не может быть удалено.</response>
 	[HttpDelete("{id:guid}")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<IActionResult> DeleteAsync(
 		[FromRoute] Guid id,
 		[FromQuery] Guid actorUserId,

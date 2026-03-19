@@ -34,12 +34,15 @@ public static class UploadedImageReader
 
 	public static async Task<ImageCreateModel> ReadAsync(IFormFile file, CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var contentType = string.IsNullOrWhiteSpace(file.ContentType)
 			? "application/octet-stream"
 			: file.ContentType.Trim();
 
 		await using var ms = new MemoryStream(capacity: (int)Math.Min(file.Length, int.MaxValue));
 		await file.CopyToAsync(ms, cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
 
 		return new ImageCreateModel(contentType, ms.ToArray());
 	}

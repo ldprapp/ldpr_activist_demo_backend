@@ -6,6 +6,8 @@ public static class ImageGcHelpers
 {
 	public static async Task DeleteOrphanManyAsync(AppDbContext db, IReadOnlyCollection<Guid> imageIds, CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		if(imageIds.Count == 0)
 		{
 			return;
@@ -25,6 +27,8 @@ public static class ImageGcHelpers
 
 		foreach(var id in ids)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			var used = await IsImageUsedAsync(db, id, cancellationToken);
 			if(!used)
 			{

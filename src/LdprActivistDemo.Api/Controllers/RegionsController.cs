@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LdprActivistDemo.Api.Controllers;
 
+/// <summary>
+/// Эндпоинты справочника регионов и населённых пунктов.
+/// </summary>
 [ApiController]
 [Route("api/v1/regions")]
 public sealed class RegionsController : ControllerBase
@@ -23,24 +26,51 @@ public sealed class RegionsController : ControllerBase
 		_geo = geo;
 	}
 
+	/// <summary>
+	/// Возвращает список всех регионов справочника.
+	/// </summary>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Список регионов успешно возвращён.</response>
 	[HttpGet]
 	[ProducesResponseType(typeof(IReadOnlyList<RegionDto>), StatusCodes.Status200OK)]
 	public async Task<ActionResult<IReadOnlyList<RegionDto>>> GetRegions(CancellationToken cancellationToken)
 	{
 		var regions = await _geo.GetRegionsAsync(cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
 		var dto = regions.Select(x => new RegionDto(x.Name, x.IsDeleted)).ToList();
 		return Ok(dto);
 	}
 
+	/// <summary>
+	/// Возвращает список населённых пунктов для указанного региона.
+	/// </summary>
+	/// <param name="regionName">Название региона.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Список населённых пунктов успешно возвращён.</response>
 	[HttpGet("{regionName}/settlements")]
 	[ProducesResponseType(typeof(IReadOnlyList<SettlementDto>), StatusCodes.Status200OK)]
 	public async Task<ActionResult<IReadOnlyList<SettlementDto>>> GetSettlementsByRegion(string regionName, CancellationToken cancellationToken)
 	{
 		var settlements = await _geo.GetSettlementsByRegionAsync(regionName, cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
 		var dto = settlements.Select(x => new SettlementDto(x.Name, x.IsDeleted)).ToList();
 		return Ok(dto);
 	}
 
+	/// <summary>
+	/// Создаёт новый регион в справочнике.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// </remarks>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Тело запроса с именем нового региона.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Регион успешно создан.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="409">Регион с таким именем уже существует.</response>
 	[HttpPost]
 	[ProducesResponseType(typeof(CreateRegionResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -73,6 +103,25 @@ public sealed class RegionsController : ControllerBase
 		return Created($"/api/v1/regions/{Uri.EscapeDataString(name)}", new CreateRegionResponse(name));
 	}
 
+	/// <summary>
+	/// Создаёт один или несколько населённых пунктов в указанном регионе.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// В теле запроса допускаются два формата:
+	/// 1) корневой JSON-массив строк;
+	/// 2) JSON-объект с полем <c>names</c>, содержащим массив строк или одну строку.
+	/// </remarks>
+	/// <param name="regionName">Название региона, в котором создаются населённые пункты.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">JSON-тело запроса со списком названий населённых пунктов.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Населённые пункты успешно созданы.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Указанный регион не найден.</response>
+	/// <response code="409">Обнаружен конфликт уникальности или операция запрещена текущим состоянием справочника.</response>
 	[HttpPost("{regionName}/settlements")]
 	[Consumes("application/json")]
 	[ProducesResponseType(typeof(CreateSettlementsResponse), StatusCodes.Status201Created)]
@@ -93,7 +142,7 @@ public sealed class RegionsController : ControllerBase
 			return invalidActor;
 		}
 
-		if(!TryExtractSettlementNames(request, out var settlementNames) || settlementNames.Count == 0)
+		if(!TryExtractSettlementNames(request, cancellationToken, out var settlementNames) || settlementNames.Count == 0)
 		{
 			return this.ValidationProblemWithCode(
 				ApiErrorCodes.ValidationFailed,
@@ -123,6 +172,22 @@ $"/api/v1/regions/{Uri.EscapeDataString(regionName)}/settlements",
 new CreateSettlementsResponse(createdNames));
 	}
 
+	/// <summary>
+	/// Переименовывает регион.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// </remarks>
+	/// <param name="regionName">Текущее название региона.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Тело запроса с новым названием региона.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Регион успешно обновлён.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Регион не найден.</response>
+	/// <response code="409">Регион с новым именем уже существует.</response>
 	[HttpPut("{regionName}")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -151,6 +216,24 @@ new CreateSettlementsResponse(createdNames));
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
+	/// <summary>
+	/// Помечает регион как удалённый.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// При передаче <c>targetRegionName</c> регион используется как цель миграции задач,
+	/// которые были привязаны к удаляемому региону без конкретного населённого пункта.
+	/// </remarks>
+	/// <param name="regionName">Название удаляемого региона.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="targetRegionName">Опциональное название региона-назначения для миграции связанных данных.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Регион успешно помечен как удалённый.</response>
+	/// <response code="400">Переданы некорректные параметры удаления.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Исходный или целевой регион не найден.</response>
+	/// <response code="409">Регион нельзя удалить из-за конфликтующего состояния данных.</response>
 	[HttpDelete("{regionName}")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -178,6 +261,21 @@ new CreateSettlementsResponse(createdNames));
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
+	/// <summary>
+	/// Восстанавливает ранее удалённый регион.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// </remarks>
+	/// <param name="regionName">Название региона для восстановления.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Регион успешно восстановлен.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Регион не найден.</response>
+	/// <response code="409">Операция запрещена текущим состоянием данных.</response>
 	[HttpPost("{regionName}/restore")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -200,6 +298,23 @@ new CreateSettlementsResponse(createdNames));
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
+	/// <summary>
+	/// Переименовывает населённый пункт внутри указанного региона.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// </remarks>
+	/// <param name="regionName">Название региона, в котором находится населённый пункт.</param>
+	/// <param name="settlementName">Текущее название населённого пункта.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Тело запроса с новым названием населённого пункта.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Населённый пункт успешно обновлён.</response>
+	/// <response code="400">Переданы некорректные данные запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Регион или населённый пункт не найден.</response>
+	/// <response code="409">Населённый пункт с новым именем уже существует.</response>
 	[HttpPut("{regionName}/settlements/{settlementName}")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -229,6 +344,26 @@ new CreateSettlementsResponse(createdNames));
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
+	/// <summary>
+	/// Помечает населённый пункт как удалённый.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// Для миграции связанных пользователей и задач можно указать одновременно
+	/// <c>targetRegionName</c> и <c>targetSettlementName</c>.
+	/// </remarks>
+	/// <param name="regionName">Название региона, в котором находится удаляемый населённый пункт.</param>
+	/// <param name="settlementName">Название удаляемого населённого пункта.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="targetRegionName">Опциональное название целевого региона для миграции данных.</param>
+	/// <param name="targetSettlementName">Опциональное название целевого населённого пункта для миграции данных.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Населённый пункт успешно помечен как удалённый.</response>
+	/// <response code="400">Переданы некорректные параметры удаления.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Регион, исходный или целевой населённый пункт не найден.</response>
+	/// <response code="409">Операция запрещена текущим состоянием данных.</response>
 	[HttpDelete("{regionName}/settlements/{settlementName}")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -258,6 +393,23 @@ new CreateSettlementsResponse(createdNames));
 		return result.IsSuccess ? NoContent() : MapError(result.Error);
 	}
 
+	/// <summary>
+	/// Восстанавливает ранее удалённый населённый пункт.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// Регион-родитель должен быть активным.
+	/// </remarks>
+	/// <param name="regionName">Название региона, в котором находится населённый пункт.</param>
+	/// <param name="settlementName">Название населённого пункта для восстановления.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="204">Населённый пункт успешно восстановлен.</response>
+	/// <response code="400">Переданы некорректные параметры запроса.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="404">Регион или населённый пункт не найден.</response>
+	/// <response code="409">Операция запрещена текущим состоянием данных.</response>
 	[HttpPost("{regionName}/settlements/{settlementName}/restore")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -303,19 +455,21 @@ new CreateSettlementsResponse(createdNames));
 		return this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors);
 	}
 
-	private static bool TryExtractSettlementNames(JsonElement request, out List<string> names)
+	private static bool TryExtractSettlementNames(JsonElement request, CancellationToken cancellationToken, out List<string> names)
 	{
 		names = new List<string>();
 
 		switch(request.ValueKind)
 		{
 			case JsonValueKind.Array:
-				AddNamesFromArray(request, names);
+				AddNamesFromArray(request, names, cancellationToken);
 				return true;
 
 			case JsonValueKind.Object:
 				foreach(var property in request.EnumerateObject())
 				{
+					cancellationToken.ThrowIfCancellationRequested();
+
 					if(!string.Equals(property.Name, "names", StringComparison.OrdinalIgnoreCase))
 					{
 						continue;
@@ -324,10 +478,12 @@ new CreateSettlementsResponse(createdNames));
 					switch(property.Value.ValueKind)
 					{
 						case JsonValueKind.Array:
-							AddNamesFromArray(property.Value, names);
+							AddNamesFromArray(property.Value, names, cancellationToken);
 							break;
 
 						case JsonValueKind.String:
+							cancellationToken.ThrowIfCancellationRequested();
+
 							var singleName = property.Value.GetString();
 							if(!string.IsNullOrWhiteSpace(singleName))
 							{
@@ -344,10 +500,12 @@ new CreateSettlementsResponse(createdNames));
 		}
 	}
 
-	private static void AddNamesFromArray(JsonElement arrayElement, List<string> names)
+	private static void AddNamesFromArray(JsonElement arrayElement, List<string> names, CancellationToken cancellationToken)
 	{
 		foreach(var item in arrayElement.EnumerateArray())
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			if(item.ValueKind != JsonValueKind.String)
 			{
 				continue;

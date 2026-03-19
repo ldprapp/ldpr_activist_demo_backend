@@ -37,6 +37,8 @@ public sealed class PasswordResetService : IPasswordResetService
 		string newPassword,
 		CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		phoneNumber = (phoneNumber ?? string.Empty).Trim();
 		newPassword = (newPassword ?? string.Empty).Trim();
 
@@ -53,6 +55,7 @@ public sealed class PasswordResetService : IPasswordResetService
 				return PasswordResetIssueResult.Fail(PasswordResetIssueError.PhoneNotConfirmed);
 			}
 
+			cancellationToken.ThrowIfCancellationRequested();
 			var passwordHash = _passwordHasher.Hash(newPassword);
 			var ttl = GetTtl();
 
@@ -63,11 +66,19 @@ public sealed class PasswordResetService : IPasswordResetService
 				await _otp.IssueAsync(phoneNumber, cancellationToken);
 				return PasswordResetIssueResult.Success();
 			}
+			catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+			{
+				throw;
+			}
 			catch
 			{
 				await _store.RemoveAsync(phoneNumber, cancellationToken);
 				return PasswordResetIssueResult.Fail(PasswordResetIssueError.OtpSendFailed);
 			}
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			throw;
 		}
 		catch
 		{
@@ -80,6 +91,8 @@ public sealed class PasswordResetService : IPasswordResetService
 		string otpCode,
 		CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		phoneNumber = (phoneNumber ?? string.Empty).Trim();
 		otpCode = (otpCode ?? string.Empty).Trim();
 
@@ -122,6 +135,10 @@ public sealed class PasswordResetService : IPasswordResetService
 			return updated
 				? PasswordResetConfirmResult.Success()
 				: PasswordResetConfirmResult.Fail(PasswordResetConfirmError.UserNotFound);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			throw;
 		}
 		catch
 		{

@@ -30,6 +30,8 @@ public sealed class ImageRepository : IImageRepository
 
 	public async Task<ImagePayload?> GetSystemByNameAsync(string name, CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		name = NormalizeSystemImageName(name);
 		if(name.Length == 0)
 		{
@@ -76,6 +78,8 @@ public sealed class ImageRepository : IImageRepository
 			return false;
 		}
 
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var idString = id.ToString("D");
 
 		await _db.Users
@@ -95,6 +99,8 @@ public sealed class ImageRepository : IImageRepository
 
 	public async Task<Guid> CreateAsync(Guid ownerUserId, ImageCreateModel model, CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		if(ownerUserId == Guid.Empty)
 		{
 			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
@@ -132,6 +138,8 @@ public sealed class ImageRepository : IImageRepository
 	   IReadOnlyList<ImageCreateModel> models,
 	   CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		if(ownerUserId == Guid.Empty)
 		{
 			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
@@ -151,6 +159,8 @@ public sealed class ImageRepository : IImageRepository
 
 		for(var i = 0; i < models.Count; i++)
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+
 			var m = models[i];
 			if(m is null)
 			{
@@ -187,6 +197,8 @@ public sealed class ImageRepository : IImageRepository
 		ImageCreateModel model,
 		CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		if(ownerUserId == Guid.Empty)
 		{
 			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
@@ -242,6 +254,8 @@ public sealed class ImageRepository : IImageRepository
 		}
 
 		await _db.SaveChangesAsync(cancellationToken);
+
+		cancellationToken.ThrowIfCancellationRequested();
 
 		if(oldImageId.HasValue && oldImageId.Value != newImageId)
 		{

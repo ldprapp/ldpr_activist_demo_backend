@@ -105,6 +105,8 @@ public sealed class UserRepository : IUserRepository
 
 	public async Task<Guid> CreateAsync(UserCreateModel model, CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		var gender = NormalizeGenderOrThrow(model.Gender);
 
 		var geo = await ResolveRegionSettlementAsync(model.RegionName, model.SettlementName, cancellationToken);
@@ -120,6 +122,8 @@ public sealed class UserRepository : IUserRepository
 		{
 			throw new InvalidOperationException("PhoneNumber already exists.");
 		}
+
+		cancellationToken.ThrowIfCancellationRequested();
 
 		var userId = Guid.NewGuid();
 		var entity = new User
@@ -160,6 +164,8 @@ public sealed class UserRepository : IUserRepository
 			return false;
 		}
 
+		cancellationToken.ThrowIfCancellationRequested();
+
 		return _passwordHasher.Verify(u.PasswordHash, password);
 	}
 
@@ -170,6 +176,8 @@ public sealed class UserRepository : IUserRepository
 		{
 			return false;
 		}
+
+		cancellationToken.ThrowIfCancellationRequested();
 
 		return _passwordHasher.Verify(u.PasswordHash, password);
 	}
@@ -194,6 +202,8 @@ public sealed class UserRepository : IUserRepository
 		{
 			return false;
 		}
+
+		cancellationToken.ThrowIfCancellationRequested();
 
 		u.PasswordHash = _passwordHasher.Hash(newPassword);
 		await _db.SaveChangesAsync(cancellationToken);
@@ -396,31 +406,6 @@ public sealed class UserRepository : IUserRepository
 			   u.IsPhoneConfirmed,
 			   u.AvatarImageUrl))
 		   .ToListAsync(cancellationToken);
-	}
-
-	public async Task<bool> AddPointsAsync(Guid userId, int pointsToAdd, CancellationToken cancellationToken)
-	{
-		if(pointsToAdd < 0)
-		{
-			throw new ArgumentOutOfRangeException(nameof(pointsToAdd));
-		}
-
-		var exists = await _db.Users.AsNoTracking().AnyAsync(x => x.Id == userId, cancellationToken);
-		if(!exists)
-		{
-			return false;
-		}
-
-		_db.UserPointsTransactions.Add(new UserPointsTransaction
-		{
-			Id = Guid.NewGuid(),
-			UserId = userId,
-			Amount = pointsToAdd,
-			TransactionAt = DateTimeOffset.UtcNow,
-			Comment = "Points credited.",
-		});
-		await _db.SaveChangesAsync(cancellationToken);
-		return true;
 	}
 
 	private static string? NormalizeGenderOrThrow(string? value)

@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LdprActivistDemo.Api.Controllers;
 
+/// <summary>
+/// Эндпоинты работы с системными изображениями.
+/// </summary>
 [ApiController]
 [Route("api/v1/system-images")]
 public sealed class SystemImagesController : ControllerBase
@@ -21,6 +24,14 @@ public sealed class SystemImagesController : ControllerBase
 		_images = images ?? throw new ArgumentNullException(nameof(images));
 	}
 
+	/// <summary>
+	/// Возвращает бинарное содержимое системного изображения по его имени.
+	/// </summary>
+	/// <param name="imgName">Имя системного изображения.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="200">Системное изображение найдено и возвращено как файл.</response>
+	/// <response code="400">Передано пустое или некорректное имя изображения.</response>
+	/// <response code="404">Системное изображение с указанным именем не найдено.</response>
 	[HttpGet("{imgName}")]
 	[ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -54,6 +65,24 @@ public sealed class SystemImagesController : ControllerBase
 		return File(image.Data, image.ContentType);
 	}
 
+	/// <summary>
+	/// Создаёт или обновляет системное изображение по имени.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только пользователю с ролью <c>admin</c>.
+	/// Если изображение с таким именем уже существует, выполняется замена файла.
+	/// Если не существует — создаётся новая запись.
+	/// </remarks>
+	/// <param name="imgName">Имя системного изображения.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
+	/// <param name="request">Multipart/form-data с файлом изображения.</param>
+	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
+	/// <response code="201">Системное изображение создано.</response>
+	/// <response code="200">Системное изображение обновлено.</response>
+	/// <response code="400">Переданы некорректные данные запроса или неподдерживаемый файл.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
+	/// <response code="403">Операция запрещена для текущей роли.</response>
 	[HttpPut("{imgName}")]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(SystemImageDto), StatusCodes.Status201Created)]
@@ -140,8 +169,14 @@ public sealed class SystemImagesController : ControllerBase
 			: Ok(dto);
 	}
 
+	/// <summary>
+	/// Модель multipart/form-data для создания или обновления системного изображения.
+	/// </summary>
 	public sealed class UpsertSystemImageFormRequest
 	{
+		/// <summary>
+		/// Файл изображения.
+		/// </summary>
 		public IFormFile? Image { get; set; }
 	}
 

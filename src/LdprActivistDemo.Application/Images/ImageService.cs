@@ -61,13 +61,42 @@ public sealed class ImageService : IImageService
 	}
 
 	public Task<Guid> CreateAsync(Guid ownerUserId, ImageCreateModel model, CancellationToken cancellationToken = default)
-		=> _images.CreateAsync(ownerUserId, model, cancellationToken);
+	{
+		ValidateOwnerUserId(ownerUserId);
+		ValidateImageModel(model);
+		return _images.CreateAsync(ownerUserId, model, cancellationToken);
+	}
 
 	public Task<IReadOnlyList<Guid>> CreateManyAsync(
 		Guid ownerUserId,
 		IReadOnlyList<ImageCreateModel> models,
 		CancellationToken cancellationToken = default)
-		=> _images.CreateManyAsync(ownerUserId, models, cancellationToken);
+	{
+		ValidateOwnerUserId(ownerUserId);
+
+		if(models is null)
+		{
+			throw new ArgumentNullException(nameof(models));
+		}
+
+		if(models.Count == 0)
+		{
+			return Task.FromResult<IReadOnlyList<Guid>>(Array.Empty<Guid>());
+		}
+
+		for(var i = 0; i < models.Count; i++)
+		{
+			var current = models[i];
+			if(current is null)
+			{
+				throw new InvalidOperationException($"Image model at index {i} is null.");
+			}
+
+			ValidateImageModel(current);
+		}
+
+		return _images.CreateManyAsync(ownerUserId, models, cancellationToken);
+	}
 
 	public async Task<SystemImageUpsertResult> UpsertSystemImageAsync(
 		Guid actorUserId,
@@ -76,6 +105,8 @@ public sealed class ImageService : IImageService
 		ImageCreateModel model,
 		CancellationToken cancellationToken = default)
 	{
+		name = NormalizeSystemImageName(name);
+
 		if(actorUserId == Guid.Empty
 		   || string.IsNullOrWhiteSpace(actorUserPassword)
 		   || string.IsNullOrWhiteSpace(name)
@@ -100,4 +131,28 @@ public sealed class ImageService : IImageService
 		var result = await _images.UpsertSystemImageAsync(actorUserId, name, model, cancellationToken);
 		return result.IsCreated ? SystemImageUpsertResult.Created(result.Value) : SystemImageUpsertResult.Updated(result.Value);
 	}
+
+	private static void ValidateOwnerUserId(Guid ownerUserId)
+	{
+		if(ownerUserId == Guid.Empty)
+		{
+			throw new ArgumentOutOfRangeException(nameof(ownerUserId));
+		}
+	}
+
+	private static void ValidateImageModel(ImageCreateModel model)
+	{
+		if(model is null)
+		{
+			throw new ArgumentNullException(nameof(model));
+		}
+
+		if(model.Data is null || model.Data.Length == 0)
+		{
+			throw new InvalidOperationException("Image data is empty.");
+		}
+	}
+
+	private static string NormalizeSystemImageName(string? value)
+		=> (value ?? string.Empty).Trim().ToLowerInvariant();
 }

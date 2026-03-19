@@ -3,10 +3,12 @@
 public sealed class ActorAccessService : IActorAccessService
 {
 	private readonly IUserRepository _users;
+	private readonly IPasswordHasher _passwordHasher;
 
-	public ActorAccessService(IUserRepository users)
+	public ActorAccessService(IUserRepository users, IPasswordHasher passwordHasher)
 	{
 		_users = users ?? throw new ArgumentNullException(nameof(users));
+		_passwordHasher = passwordHasher ?? throw new ArgumentNullException(nameof(passwordHasher));
 	}
 
 	public async Task<ActorAuthenticationResult> AuthenticateAsync(
@@ -25,7 +27,9 @@ public sealed class ActorAccessService : IActorAccessService
 			return ActorAuthenticationResult.Fail(ActorAuthenticationError.InvalidCredentials);
 		}
 
-		var ok = await _users.ValidatePasswordAsync(actorUserId, actorUserPassword, cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
+
+		var ok = _passwordHasher.Verify(actor.PasswordHash, actorUserPassword);
 		if(!ok)
 		{
 			return ActorAuthenticationResult.Fail(ActorAuthenticationError.InvalidCredentials);
