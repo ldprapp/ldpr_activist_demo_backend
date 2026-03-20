@@ -194,14 +194,11 @@ public sealed class UserService : IUserService
 		var properties = new (string Name, object? Value)[]
 		{
 			("PhoneNumber", MaskPhoneNumber(phoneNumber)),
-		};
-
-		using var scope = _logger.BeginExecutionScope(
+		}; using var scope = _logger.BeginExecutionScope(
 			DomainLogEvents.User.Login,
 			LogLayers.ApplicationService,
 			ApplicationLogOperations.Users.Login,
 			properties);
-
 		_logger.LogStarted(
 			DomainLogEvents.User.Login,
 			LogLayers.ApplicationService,
@@ -211,21 +208,33 @@ public sealed class UserService : IUserService
 
 		try
 		{
-			var passwordOk = await _users.ValidatePasswordAsync(phoneNumber, password, cancellationToken);
-			if(!passwordOk)
+			var u = await _users.GetInternalByPhoneAsync(phoneNumber, cancellationToken);
+			if(u is null)
 			{
 				_logger.LogRejected(
 					LogLevel.Warning,
 					DomainLogEvents.User.Login,
 					LogLayers.ApplicationService,
 					ApplicationLogOperations.Users.Login,
-					"User login rejected. Invalid credentials.",
+					"User login rejected. User not found.",
 					StructuredLog.Combine(properties, ("Error", LoginError.InvalidCredentials)));
 				return LoginResult.Fail(LoginError.InvalidCredentials);
 			}
 
-			var u = await _users.GetInternalByPhoneAsync(phoneNumber, cancellationToken);
-			if(u is null)
+			if(UserRoleRules.IsBanned(u.Role))
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.Login,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.Login,
+					"User login rejected. User is banned.",
+					StructuredLog.Combine(properties, ("UserId", u.Id), ("Error", LoginError.UserNotFound)));
+				return LoginResult.Fail(LoginError.UserNotFound);
+			}
+
+			var passwordOk = await _users.ValidatePasswordAsync(phoneNumber, password, cancellationToken);
+			if(!passwordOk)
 			{
 				_logger.LogRejected(
 					LogLevel.Warning,
@@ -687,12 +696,11 @@ public sealed class UserService : IUserService
 			LogLayers.ApplicationService,
 			ApplicationLogOperations.Users.ChangeCoordinatorRole,
 			properties);
-
 		_logger.LogStarted(
 			DomainLogEvents.User.ChangeCoordinatorRole,
 			LogLayers.ApplicationService,
 			ApplicationLogOperations.Users.ChangeCoordinatorRole,
-			"Coordinator role change started.",
+			"User role change started.",
 			properties);
 
 		try
@@ -750,14 +758,14 @@ public sealed class UserService : IUserService
 				return UserRoleChangeResult.Fail(UserRoleChangeError.UserNotFound);
 			}
 
-			if(UserRoleRules.IsAdmin(target.Role))
+			if(UserRoleRules.IsAdmin(target.Role) || UserRoleRules.IsBanned(target.Role))
 			{
 				_logger.LogRejected(
 					LogLevel.Warning,
 					DomainLogEvents.User.ChangeCoordinatorRole,
 					LogLayers.ApplicationService,
 					ApplicationLogOperations.Users.ChangeCoordinatorRole,
-					"Coordinator role change rejected. Cannot change role for admin.",
+					"User role change rejected. Target role change is not allowed.",
 					StructuredLog.Combine(
 						properties,
 						("TargetRole", target.Role),
@@ -778,15 +786,13 @@ public sealed class UserService : IUserService
 					StructuredLog.Combine(properties, ("Error", UserRoleChangeError.UserNotFound)));
 				return UserRoleChangeResult.Fail(UserRoleChangeError.UserNotFound);
 			}
-
 			_logger.LogCompleted(
 				LogLevel.Information,
 				DomainLogEvents.User.ChangeCoordinatorRole,
 				LogLayers.ApplicationService,
 				ApplicationLogOperations.Users.ChangeCoordinatorRole,
-				"Coordinator role change completed.",
+				"User role change completed.",
 				StructuredLog.Combine(properties, ("NewRole", nextRole)));
-
 			return UserRoleChangeResult.Success();
 		}
 		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
@@ -796,7 +802,7 @@ public sealed class UserService : IUserService
 				DomainLogEvents.User.ChangeCoordinatorRole,
 				LogLayers.ApplicationService,
 				ApplicationLogOperations.Users.ChangeCoordinatorRole,
-				"Coordinator role change aborted.",
+				"User role change aborted.",
 				properties);
 			throw;
 		}
@@ -807,7 +813,171 @@ public sealed class UserService : IUserService
 				DomainLogEvents.User.ChangeCoordinatorRole,
 				LogLayers.ApplicationService,
 				ApplicationLogOperations.Users.ChangeCoordinatorRole,
-				"Coordinator role change failed.",
+				"User role change failed.",
+				ex,
+				properties);
+			throw;
+		}
+	}
+
+	public async Task<UserRoleChangeResult> SetBannedRoleAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid targetUserId,
+		bool isBanned,
+		CancellationToken cancellationToken)
+	{
+		var properties = new (string Name, object? Value)[]
+		{
+			("ActorUserId", actorUserId),
+			("TargetUserId", targetUserId),
+			("IsBanned", isBanned),
+		};
+
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.User.ChangeCoordinatorRole,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.Users.ChangeCoordinatorRole,
+			properties);
+		_logger.LogStarted(
+			DomainLogEvents.User.ChangeCoordinatorRole,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.Users.ChangeCoordinatorRole,
+			"User role change started.",
+			properties);
+
+		try
+		{
+			if(actorUserId == Guid.Empty || targetUserId == Guid.Empty || string.IsNullOrWhiteSpace(actorUserPassword))
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.ChangeCoordinatorRole,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.ChangeCoordinatorRole,
+					"User role change rejected by validation.",
+					StructuredLog.Combine(properties, ("Error", UserRoleChangeError.ValidationFailed)));
+				return UserRoleChangeResult.Fail(UserRoleChangeError.ValidationFailed);
+			}
+
+			var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+			if(!actorAuth.IsSuccess)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.ChangeCoordinatorRole,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.ChangeCoordinatorRole,
+					"User role change rejected. Invalid actor credentials.",
+					StructuredLog.Combine(properties, ("Error", UserRoleChangeError.InvalidCredentials)));
+				return UserRoleChangeResult.Fail(UserRoleChangeError.InvalidCredentials);
+			}
+
+			if(!UserRoleRules.IsAdmin(actorAuth.Actor!.Role))
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.ChangeCoordinatorRole,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.ChangeCoordinatorRole,
+					"User role change rejected. Actor is not admin.",
+					StructuredLog.Combine(
+						properties,
+						("ActorRole", actorAuth.Actor.Role),
+						("Error", UserRoleChangeError.Forbidden)));
+				return UserRoleChangeResult.Fail(UserRoleChangeError.Forbidden);
+			}
+
+			var target = await _users.GetInternalByIdAsync(targetUserId, cancellationToken);
+			if(target is null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.ChangeCoordinatorRole,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.ChangeCoordinatorRole,
+					"User role change rejected. Target user not found.",
+					StructuredLog.Combine(properties, ("Error", UserRoleChangeError.UserNotFound)));
+				return UserRoleChangeResult.Fail(UserRoleChangeError.UserNotFound);
+			}
+
+			if(isBanned)
+			{
+				if(UserRoleRules.IsAdmin(target.Role) || UserRoleRules.IsBanned(target.Role))
+				{
+					_logger.LogRejected(
+						LogLevel.Warning,
+						DomainLogEvents.User.ChangeCoordinatorRole,
+						LogLayers.ApplicationService,
+						ApplicationLogOperations.Users.ChangeCoordinatorRole,
+						"User role change rejected. Target role change is not allowed.",
+						StructuredLog.Combine(
+							properties,
+							("TargetRole", target.Role),
+							("Error", UserRoleChangeError.RoleChangeNotAllowed)));
+					return UserRoleChangeResult.Fail(UserRoleChangeError.RoleChangeNotAllowed);
+				}
+			}
+			else
+			{
+				if(!UserRoleRules.IsBanned(target.Role))
+				{
+					_logger.LogRejected(
+						LogLevel.Warning,
+						DomainLogEvents.User.ChangeCoordinatorRole,
+						LogLayers.ApplicationService,
+						ApplicationLogOperations.Users.ChangeCoordinatorRole,
+						"User role change rejected. Target role change is not allowed.",
+						StructuredLog.Combine(
+							properties,
+							("TargetRole", target.Role),
+							("Error", UserRoleChangeError.RoleChangeNotAllowed)));
+					return UserRoleChangeResult.Fail(UserRoleChangeError.RoleChangeNotAllowed);
+				}
+			}
+
+			var nextRole = isBanned ? UserRoles.Banned : UserRoles.Activist;
+			var changed = await _users.SetRoleAsync(targetUserId, nextRole, cancellationToken);
+			if(!changed)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.ChangeCoordinatorRole,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.ChangeCoordinatorRole,
+					"User role change rejected. Target user disappeared before save.",
+					StructuredLog.Combine(properties, ("Error", UserRoleChangeError.UserNotFound)));
+				return UserRoleChangeResult.Fail(UserRoleChangeError.UserNotFound);
+			}
+
+			_logger.LogCompleted(
+				LogLevel.Information,
+				DomainLogEvents.User.ChangeCoordinatorRole,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Users.ChangeCoordinatorRole,
+				"User role change completed.",
+				StructuredLog.Combine(properties, ("NewRole", nextRole)));
+			return UserRoleChangeResult.Success();
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.User.ChangeCoordinatorRole,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Users.ChangeCoordinatorRole,
+				"User role change aborted.",
+				properties);
+			throw;
+		}
+		catch(Exception ex)
+		{
+			_logger.LogFailed(
+				LogLevel.Error,
+				DomainLogEvents.User.ChangeCoordinatorRole,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Users.ChangeCoordinatorRole,
+				"User role change failed.",
 				ex,
 				properties);
 			throw;

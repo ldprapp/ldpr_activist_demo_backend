@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Diagnostics;
 using LdprActivistDemo.Application.Logging;
+using LdprActivistDemo.Application.Users.Models;
 
 using Microsoft.Extensions.Logging;
 
@@ -66,25 +67,34 @@ public sealed class ActorAccessService : IActorAccessService
 					LogLevel.Warning,
 					DomainLogEvents.Auth.ActorAuthenticate,
 					LogLayers.ApplicationService,
-					ApplicationLogOperations.Auth.AuthenticateActor,
-					"Actor authentication rejected. Actor not found.",
-					StructuredLog.Combine(properties, ("Error", ActorAuthenticationError.InvalidCredentials)));
-
+					ApplicationLogOperations.Auth.AuthenticateActor, "Actor authentication rejected. Actor not found.",
+				StructuredLog.Combine(properties, ("Error", ActorAuthenticationError.InvalidCredentials)));
 				return ActorAuthenticationResult.Fail(ActorAuthenticationError.InvalidCredentials);
 			}
 
-			cancellationToken.ThrowIfCancellationRequested();
-
-			var ok = _passwordHasher.Verify(actor.PasswordHash, actorUserPassword);
-			if(!ok)
+			if(UserRoleRules.IsBanned(actor.Role))
 			{
 				_logger.LogRejected(
 					LogLevel.Warning,
 					DomainLogEvents.Auth.ActorAuthenticate,
 					LogLayers.ApplicationService,
 					ApplicationLogOperations.Auth.AuthenticateActor,
-					"Actor authentication rejected. Invalid password.",
-					StructuredLog.Combine(properties, ("Error", ActorAuthenticationError.InvalidCredentials)));
+					"Actor authentication rejected. Actor is banned.",
+					StructuredLog.Combine(properties, ("Error", ActorAuthenticationError.InvalidCredentials), ("ActorRole", actor.Role)));
+				return ActorAuthenticationResult.Fail(ActorAuthenticationError.InvalidCredentials);
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			var ok = _passwordHasher.Verify(actor.PasswordHash, actorUserPassword);
+			if(!ok)
+			{
+				_logger.LogRejected(
+						LogLevel.Warning,
+						DomainLogEvents.Auth.ActorAuthenticate,
+						LogLayers.ApplicationService,
+						ApplicationLogOperations.Auth.AuthenticateActor,
+						"Actor authentication rejected. Invalid password.",
+						StructuredLog.Combine(properties, ("Error", ActorAuthenticationError.InvalidCredentials)));
 
 				return ActorAuthenticationResult.Fail(ActorAuthenticationError.InvalidCredentials);
 			}

@@ -458,11 +458,11 @@ public sealed class UsersController : ControllerBase
 	[HttpPost("login")]
 	[ProducesResponseType(typeof(LoginOkResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
 	public async Task<ActionResult<LoginOkResponse>> Login([FromBody] UserLoginRequest request, CancellationToken cancellationToken)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
 		if(string.IsNullOrWhiteSpace(request.PhoneNumber))
 		{
 			errors[nameof(request.PhoneNumber)] = new[] { "PhoneNumber is required." };
@@ -492,7 +492,17 @@ public sealed class UsersController : ControllerBase
 
 		return result.Error switch
 		{
-			LoginError.PhoneNotConfirmed => this.ProblemWithCode(StatusCodes.Status409Conflict, ApiErrorCodes.PhoneNotConfirmed, "Телефон не подтверждён.", "Сначала подтвердите телефон через OTP."),
+			LoginError.UserNotFound => this.ProblemWithCode(
+				StatusCodes.Status404NotFound,
+				ApiErrorCodes.UserNotFound,
+				"Пользователь не найден.",
+				"Аккаунт не существует."),
+
+			LoginError.PhoneNotConfirmed => this.ProblemWithCode(
+				StatusCodes.Status409Conflict,
+				ApiErrorCodes.PhoneNotConfirmed,
+				"Телефон не подтверждён.",
+				"Сначала подтвердите телефон через OTP."),
 			_ => this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", "Телефон не найден или пароль неверный."),
 		};
 	}
@@ -994,6 +1004,52 @@ public sealed class UsersController : ControllerBase
 		return result.IsSuccess ? NoContent() : MapUserRoleChangeError(result.Error);
 	}
 
+	[HttpPut("{id:guid}/role/banned")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> BanUser(
+		Guid id,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var result = await _users.SetBannedRoleAsync(actorUserId, actorUserPassword!, id, isBanned: true, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapUserRoleChangeError(result.Error);
+	}
+
+	[HttpDelete("{id:guid}/role/banned")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+	public async Task<IActionResult> UnbanUser(
+		Guid id,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var result = await _users.SetBannedRoleAsync(actorUserId, actorUserPassword!, id, isBanned: false, cancellationToken);
+		return result.IsSuccess ? NoContent() : MapUserRoleChangeError(result.Error);
+	}
+
 	private static UserDto ToDto(UserPublicModel u) => new(
 			u.Id,
 			u.LastName,
@@ -1044,7 +1100,8 @@ public sealed class UsersController : ControllerBase
 			}
 		}
 
-		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail: $"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Admin}', settlementName допускается только вместе с regionName.");
+		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail:
+				$"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}', '{UserRoles.Admin}' или '{UserRoles.Banned}', settlementName допускается только вместе с regionName.");
 	}
 
 	private ActionResult? TryBuildUsersPaginationValidationProblem(int? start, int? end)
@@ -1172,7 +1229,7 @@ public sealed class UsersController : ControllerBase
 				StatusCodes.Status409Conflict,
 				ApiErrorCodes.UserRoleChangeNotAllowed,
 				"Изменение роли запрещено.",
-				"Нельзя выдавать или забирать роль coordinator у пользователя с ролью admin."),
+				"Запрошенное изменение роли запрещено для текущего состояния пользователя."),
 
 			_ => this.ProblemWithCode(
 				StatusCodes.Status500InternalServerError,

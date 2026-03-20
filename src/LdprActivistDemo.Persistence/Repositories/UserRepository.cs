@@ -361,6 +361,7 @@ public sealed class UserRepository : IUserRepository
 
 		return await _db.Users.AsNoTracking()
 			.Where(x => x.Id == userId)
+			.Where(x => x.Role != UserRoles.Banned)
 			.Select(x => (string?)x.Role)
 			.FirstOrDefaultAsync(cancellationToken);
 	}

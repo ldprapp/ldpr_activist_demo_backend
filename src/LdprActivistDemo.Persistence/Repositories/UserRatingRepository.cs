@@ -161,14 +161,12 @@ public sealed class UserRatingRepository : IUserRatingRepository
 			DomainLogEvents.UserRatings.Repository.GetFeed,
 			LogLayers.PersistenceRepository,
 			PersistenceLogOperations.UserRatings.GetFeed,
-			properties);
-
-		_logger.LogStarted(
-			DomainLogEvents.UserRatings.Repository.GetFeed,
-			LogLayers.PersistenceRepository,
-			PersistenceLogOperations.UserRatings.GetFeed,
-			"User ratings feed query started.",
-			properties);
+			properties); _logger.LogStarted(
+				DomainLogEvents.UserRatings.Repository.GetFeed,
+				LogLayers.PersistenceRepository,
+				PersistenceLogOperations.UserRatings.GetFeed,
+				"User ratings feed query started.",
+				properties);
 
 		try
 		{
@@ -183,6 +181,9 @@ public sealed class UserRatingRepository : IUserRatingRepository
 					RegionRank = ur == null ? (int?)null : ur.RegionRank,
 					SettlementRank = ur == null ? (int?)null : ur.SettlementRank,
 				};
+
+			baseQuery = baseQuery.Where(
+				x => x.User.Role != LdprActivistDemo.Application.Users.Models.UserRoles.Banned);
 
 			if(normalizedRegionName is not null)
 			{
@@ -383,46 +384,63 @@ public sealed class UserRatingRepository : IUserRatingRepository
 
 	public async Task<UserRatingsRefreshResult> RecalculateRanksAsync(CancellationToken cancellationToken)
 	{
-		const string insertMissingRowsSql = """
+		var bannedRole = LdprActivistDemo.Application.Users.Models.UserRoles.Banned;
+
+		var deleteBannedRowsSql =
+			$"""
+			DELETE FROM user_ratings ur
+			USING users u
+			WHERE u."Id" = ur."UserId"
+			  AND u."Role" = '{bannedRole}';
+			""";
+
+		var insertMissingRowsSql =
+			$"""
 			INSERT INTO user_ratings ("UserId", "OverallRank", "RegionRank", "SettlementRank")
 			SELECT u."Id", NULL, NULL, NULL
 			FROM users u
 			LEFT JOIN user_ratings ur ON ur."UserId" = u."Id"
-			WHERE ur."UserId" IS NULL;
+			WHERE ur."UserId" IS NULL
+			  AND u."Role" <> '{bannedRole}';
 			""";
 
-		const string updateRanksSql = """
+		var updateRanksSql =
+			$"""
 			WITH points AS (
-				SELECT
-					u."Id" AS "UserId",
-					u."RegionId" AS "RegionId",
-					u."SettlementId" AS "SettlementId",
-					COALESCE(SUM(t."Amount"), 0) AS "TotalPoints"
-				FROM users u
-				LEFT JOIN user_points_transactions t ON t."UserId" = u."Id"
-				GROUP BY u."Id", u."RegionId", u."SettlementId"
+			    SELECT
+			        u."Id" AS "UserId",
+			        u."RegionId" AS "RegionId",
+			        u."SettlementId" AS "SettlementId",
+			        COALESCE(SUM(t."Amount"), 0) AS "TotalPoints"
+			    FROM users u
+			    LEFT JOIN user_points_transactions t ON t."UserId" = u."Id"
+			    WHERE u."Role" <> '{bannedRole}'
+			    GROUP BY u."Id", u."RegionId", u."SettlementId"
 			),
 			ranks AS (
-				SELECT
-					p."UserId" AS "UserId",
-					DENSE_RANK() OVER (ORDER BY p."TotalPoints" DESC) AS "OverallRank",
-					DENSE_RANK() OVER (PARTITION BY p."RegionId" ORDER BY p."TotalPoints" DESC) AS "RegionRank",
-					DENSE_RANK() OVER (PARTITION BY p."SettlementId" ORDER BY p."TotalPoints" DESC) AS "SettlementRank"
-				FROM points p
+			    SELECT
+			        p."UserId" AS "UserId",
+			        DENSE_RANK() OVER (ORDER BY p."TotalPoints" DESC) AS "OverallRank",
+			        DENSE_RANK() OVER (PARTITION BY p."RegionId" ORDER BY p."TotalPoints" DESC) AS "RegionRank",
+			        DENSE_RANK() OVER (PARTITION BY p."SettlementId" ORDER BY p."TotalPoints" DESC) AS "SettlementRank"
+			    FROM points p
 			)
 			UPDATE user_ratings ur
-			SET
-				"OverallRank" = r."OverallRank",
-				"RegionRank" = r."RegionRank",
-				"SettlementRank" = r."SettlementRank"
+			SET "OverallRank" = r."OverallRank",
+			    "RegionRank" = r."RegionRank",
+			    "SettlementRank" = r."SettlementRank"
 			FROM ranks r
 			WHERE ur."UserId" = r."UserId";
 			""";
 
 		await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+		await _db.Database.ExecuteSqlRawAsync(deleteBannedRowsSql, cancellationToken);
 		var createdMissingRows = await _db.Database.ExecuteSqlRawAsync(insertMissingRowsSql, cancellationToken);
 		var updatedUsers = await _db.Database.ExecuteSqlRawAsync(updateRanksSql, cancellationToken);
-		var totalUsers = await _db.Users.AsNoTracking().CountAsync(cancellationToken);
+		var totalUsers = await _db.Users.AsNoTracking()
+			.CountAsync(
+				x => x.Role != LdprActivistDemo.Application.Users.Models.UserRoles.Banned,
+				cancellationToken);
 		await transaction.CommitAsync(cancellationToken);
 
 		return new UserRatingsRefreshResult(totalUsers, createdMissingRows, updatedUsers);

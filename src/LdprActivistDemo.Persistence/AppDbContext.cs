@@ -95,21 +95,18 @@ public sealed class AppDbContext : DbContext
 					"\"Gender\" IS NULL OR \"Gender\" IN ('male','female')");
 				t.HasCheckConstraint(
 					"ck_users_role_allowed",
-					$"\"Role\" IN ('{UserRoles.Activist}','{UserRoles.Coordinator}','{UserRoles.Admin}')");
+					$"\"Role\" IN ('{UserRoles.Activist}','{UserRoles.Coordinator}','{UserRoles.Admin}','{UserRoles.Banned}')");
 			});
-			b.HasKey(x => x.Id);
 
+			b.HasKey(x => x.Id);
 			b.Property(x => x.LastName).IsRequired();
 			b.Property(x => x.FirstName).IsRequired();
-
 			b.Property(x => x.PhoneNumber).IsRequired();
 			b.Property(x => x.Role)
 				.IsRequired()
 				.HasDefaultValue(UserRoles.Activist);
 			b.HasIndex(x => x.PhoneNumber).IsUnique();
-
 			b.Property(x => x.PasswordHash).IsRequired();
-
 			b.Property(x => x.AvatarImageUrl);
 			b.Navigation(x => x.OwnedImages);
 

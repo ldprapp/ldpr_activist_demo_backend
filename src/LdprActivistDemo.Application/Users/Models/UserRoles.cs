@@ -5,6 +5,7 @@ public static class UserRoles
 	public const string Activist = "activist";
 	public const string Coordinator = "coordinator";
 	public const string Admin = "admin";
+	public const string Banned = "banned";
 }
 
 public static class UserRoleRules
@@ -19,12 +20,12 @@ public static class UserRoleRules
 
 		if(string.IsNullOrWhiteSpace(raw) || string.Equals(raw, "string", StringComparison.OrdinalIgnoreCase))
 		{
-			error = $"Role must be '{UserRoles.Activist}', '{UserRoles.Coordinator}' or '{UserRoles.Admin}'.";
+			error =
+				$"Role must be '{UserRoles.Activist}', '{UserRoles.Coordinator}', '{UserRoles.Admin}' or '{UserRoles.Banned}'.";
 			return false;
 		}
 
 		var token = raw.Trim().ToLowerInvariant();
-
 		if(string.Equals(token, UserRoles.Activist, StringComparison.Ordinal))
 		{
 			normalized = UserRoles.Activist;
@@ -43,7 +44,14 @@ public static class UserRoleRules
 			return true;
 		}
 
-		error = $"Role must be '{UserRoles.Activist}', '{UserRoles.Coordinator}' or '{UserRoles.Admin}'.";
+		if(string.Equals(token, UserRoles.Banned, StringComparison.Ordinal))
+		{
+			normalized = UserRoles.Banned;
+			return true;
+		}
+
+		error =
+			$"Role must be '{UserRoles.Activist}', '{UserRoles.Coordinator}', '{UserRoles.Admin}' or '{UserRoles.Banned}'.";
 		return false;
 	}
 
@@ -70,9 +78,11 @@ public static class UserRoleRules
 	}
 
 	public static bool HasCoordinatorAccess(string? role)
-		=> string.Equals(role, UserRoles.Coordinator, StringComparison.Ordinal)
-			|| IsAdmin(role);
+		=> string.Equals(role, UserRoles.Coordinator, StringComparison.Ordinal) || IsAdmin(role);
 
 	public static bool IsAdmin(string? role)
 		=> string.Equals(role, UserRoles.Admin, StringComparison.Ordinal);
+
+	public static bool IsBanned(string? role)
+		=> string.Equals(role, UserRoles.Banned, StringComparison.Ordinal);
 }

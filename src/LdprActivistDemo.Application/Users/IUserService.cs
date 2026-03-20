@@ -19,4 +19,10 @@ public interface IUserService
 	Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? settlementName, CancellationToken cancellationToken);
 	Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken);
 	Task<UserRoleChangeResult> SetCoordinatorRoleAsync(Guid actorUserId, string actorUserPassword, Guid targetUserId, bool isCoordinator, CancellationToken cancellationToken);
+	Task<UserRoleChangeResult> SetBannedRoleAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid targetUserId,
+		bool isBanned,
+		CancellationToken cancellationToken);
 }
