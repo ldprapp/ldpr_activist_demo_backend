@@ -152,6 +152,13 @@ public sealed class UserRepository : IUserRepository
 			TransactionAt = DateTimeOffset.UtcNow,
 			Comment = "User initialization transaction.",
 		});
+		_db.UserRatings.Add(new UserRating
+		{
+			UserId = userId,
+			OverallRank = null,
+			RegionRank = null,
+			SettlementRank = null,
+		});
 		await _db.SaveChangesAsync(cancellationToken);
 		return entity.Id;
 	}

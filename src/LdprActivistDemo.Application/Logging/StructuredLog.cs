@@ -187,6 +187,7 @@ public static class StructuredLogDomains
 	public const string Task = "tasks";
 	public const string User = "users";
 	public const string UserPoints = "user_points";
+	public const string UserRatings = "user_ratings";
 	public const string Otp = "otp";
 	public const string PasswordReset = "password_reset";
 }

@@ -114,4 +114,10 @@ public static class PersistenceLogOperations
 		public const string GetTransactions = "user_points.transactions.get";
 		public const string CreateTransaction = "user_points.transactions.create";
 	}
+
+	public static class UserRatings
+	{
+		public const string GetFeed = "user_ratings.feed.get";
+		public const string GetUserRanks = "user_ratings.user.get";
+	}
 }

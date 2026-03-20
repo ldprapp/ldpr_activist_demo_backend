@@ -85,6 +85,17 @@ public static class ApplicationLogOperations
 		public const string CreateTransaction = "user_points.transactions.create";
 	}
 
+	public static class UserRatings
+	{
+		public const string GetFeed = "user_ratings.feed.get";
+		public const string GetUserRanks = "user_ratings.user.get";
+		public const string GetRefreshSchedule = "user_ratings.refresh_schedule.get";
+		public const string SetRefreshSchedule = "user_ratings.refresh_schedule.set";
+		public const string RunRefreshNow = "user_ratings.refresh.run_now";
+		public const string RefreshSchedule = "user_ratings.refresh.schedule";
+		public const string RefreshRun = "user_ratings.refresh.run";
+	}
+
 	public static class Users
 	{
 		public const string Register = "users.register";

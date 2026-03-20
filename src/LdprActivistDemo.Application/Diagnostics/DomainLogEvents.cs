@@ -354,4 +354,36 @@ public static class DomainLogEvents
 		public const string GetTransactions = Service.GetTransactions;
 		public const string CreateTransaction = Service.CreateTransaction;
 	}
+
+	public static class UserRatings
+	{
+		public static class Service
+		{
+			public const string GetFeed = "user_ratings.service.feed.get";
+			public const string GetUserRanks = "user_ratings.service.user.get";
+			public const string GetRefreshSchedule = "user_ratings.service.refresh_schedule.get";
+			public const string SetRefreshSchedule = "user_ratings.service.refresh_schedule.set";
+			public const string RunRefreshNow = "user_ratings.service.refresh.run_now";
+		}
+
+		public static class Repository
+		{
+			public const string GetFeed = "user_ratings.repository.feed.get";
+			public const string GetUserRanks = "user_ratings.repository.user.get";
+		}
+
+		public static class Background
+		{
+			public const string RefreshSchedule = "user_ratings.background.refresh.schedule";
+			public const string RefreshRun = "user_ratings.background.refresh.run";
+		}
+
+		public const string GetFeed = Service.GetFeed;
+		public const string GetUserRanks = Service.GetUserRanks;
+		public const string GetRefreshSchedule = Service.GetRefreshSchedule;
+		public const string SetRefreshSchedule = Service.SetRefreshSchedule;
+		public const string RunRefreshNow = Service.RunRefreshNow;
+		public const string RefreshSchedule = Background.RefreshSchedule;
+		public const string RefreshRun = Background.RefreshRun;
+	}
 }

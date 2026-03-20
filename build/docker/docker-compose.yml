@@ -49,6 +49,7 @@ services:
       Otp__Length: ${OTP_LENGTH}
 
       Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE}
+      ApplicationTime__Locale: ${APPLICATION_TIME_LOCALE}
 
       StructuredLogging__ServiceName: ${STRUCTURED_LOGGING_SERVICE_NAME}
       StructuredLogging__ServiceNamespace: ${STRUCTURED_LOGGING_SERVICE_NAMESPACE}

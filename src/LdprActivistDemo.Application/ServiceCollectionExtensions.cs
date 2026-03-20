@@ -4,6 +4,7 @@ using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.UserPoints;
+using LdprActivistDemo.Application.UserRatings;
 using LdprActivistDemo.Application.Users;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -27,6 +28,8 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<IUserPointsService, UserPointsService>();
+		services.AddScoped<IUserRatingsService, UserRatingsService>();
+		services.AddScoped<IUserRatingsRefreshAdminService, UserRatingsRefreshAdminService>();
 		services.AddScoped<ITaskService, TaskService>();
 		services.AddScoped<IImageService, ImageService>();
 
@@ -35,6 +38,12 @@ public static class ServiceCollectionExtensions
 			sp.GetRequiredService<UnconfirmedUsersCleanupHostedService>());
 		services.AddSingleton<IUnconfirmedUserCleanupScheduler>(sp =>
 			sp.GetRequiredService<UnconfirmedUsersCleanupHostedService>());
+
+		services.AddSingleton<UserRatingsRefreshHostedService>();
+		services.AddSingleton<IUserRatingsRefreshRuntime>(sp =>
+			sp.GetRequiredService<UserRatingsRefreshHostedService>());
+		services.AddSingleton<IHostedService>(sp =>
+			sp.GetRequiredService<UserRatingsRefreshHostedService>());
 
 		return services;
 	}

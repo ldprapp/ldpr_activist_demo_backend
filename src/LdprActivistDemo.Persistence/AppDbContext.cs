@@ -17,6 +17,8 @@ public sealed class AppDbContext : DbContext
 	public DbSet<Region> Regions => Set<Region>();
 	public DbSet<Settlement> Settlements => Set<Settlement>();
 	public DbSet<User> Users => Set<User>();
+	public DbSet<UserRating> UserRatings => Set<UserRating>();
+	public DbSet<UserRatingsRefreshState> UserRatingsRefreshStates => Set<UserRatingsRefreshState>();
 	public DbSet<UserPointsTransaction> UserPointsTransactions => Set<UserPointsTransaction>();
 	public DbSet<SystemImageEntity> SystemImages => Set<SystemImageEntity>();
 
@@ -120,6 +122,47 @@ public sealed class AppDbContext : DbContext
 				.WithMany()
 				.HasForeignKey(x => x.SettlementId)
 				.OnDelete(DeleteBehavior.Restrict);
+		});
+
+		modelBuilder.Entity<UserRating>(b =>
+		{
+			b.ToTable("user_ratings");
+			b.HasKey(x => x.UserId);
+
+			b.Property(x => x.UserId)
+				.ValueGeneratedNever();
+
+			b.Property(x => x.OverallRank);
+			b.Property(x => x.RegionRank);
+			b.Property(x => x.SettlementRank);
+
+			b.HasOne(x => x.User)
+				.WithOne()
+				.HasForeignKey<UserRating>(x => x.UserId)
+				.OnDelete(DeleteBehavior.Cascade);
+		});
+
+		modelBuilder.Entity<UserRatingsRefreshState>(b =>
+		{
+			b.ToTable("user_ratings_refresh_state", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_user_ratings_refresh_state_hour_range",
+					"\"ScheduledHour\" >= 0 AND \"ScheduledHour\" <= 23");
+				t.HasCheckConstraint(
+					"ck_user_ratings_refresh_state_minute_range",
+					"\"ScheduledMinute\" >= 0 AND \"ScheduledMinute\" <= 59");
+			});
+			b.HasKey(x => x.JobName);
+			b.Property(x => x.JobName).IsRequired();
+			b.Property(x => x.ScheduledHour)
+				.IsRequired()
+				.HasDefaultValue(4);
+			b.Property(x => x.ScheduledMinute)
+				.IsRequired()
+				.HasDefaultValue(0);
+			b.Property(x => x.LastCompletedLocalDate);
+			b.Property(x => x.LastCompletedAtUtc);
 		});
 
 		modelBuilder.Entity<UserPointsTransaction>(b =>

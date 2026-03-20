@@ -1,6 +1,7 @@
 using LdprActivistDemo.Api.Health;
 using LdprActivistDemo.Api.Logging;
 using LdprActivistDemo.Api.Middleware;
+using LdprActivistDemo.Api.Time;
 using LdprActivistDemo.Application;
 using LdprActivistDemo.Application.Diagnostics;
 using LdprActivistDemo.Application.Otp;
@@ -20,6 +21,12 @@ Log.Information("Bootstrap logger configured.");
 try
 {
 	var builder = WebApplication.CreateBuilder(args);
+
+	builder.Services.Configure<ApplicationTimeOptions>(
+		builder.Configuration.GetSection(ApplicationTimeOptions.SectionName));
+
+	var applicationTimeOptions = builder.Configuration.GetSection(ApplicationTimeOptions.SectionName).Get<ApplicationTimeOptions>() ?? new ApplicationTimeOptions();
+	var applicationCulture = ApplicationTimeCultureConfigurator.ApplyDefaultCulture(applicationTimeOptions.Locale);
 
 	builder.AddStructuredLogging();
 
@@ -51,6 +58,7 @@ try
 	builder.Services.AddSingleton<IBackendVersionProvider, BackendVersionProvider>();
 	builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 	builder.Services.Configure<PasswordResetOptions>(builder.Configuration.GetSection("PasswordReset"));
+
 	builder.Services.AddApplication();
 	builder.Services.AddPersistence(builder.Configuration);
 
@@ -61,6 +69,7 @@ try
 		var properties = new (string Name, object? Value)[]
 		{
 			("EnvironmentName", app.Environment.EnvironmentName),
+			("ApplicationTimeLocale", applicationCulture.Name),
 			("ContentRootPath", app.Environment.ContentRootPath),
 		};
 
@@ -84,6 +93,7 @@ try
 		var properties = new (string Name, object? Value)[]
 		{
 			("EnvironmentName", app.Environment.EnvironmentName),
+			("ApplicationTimeLocale", applicationCulture.Name),
 		};
 
 		using var scope = app.Logger.BeginExecutionScope(
@@ -103,6 +113,7 @@ try
 	var startupProperties = new (string Name, object? Value)[]
 	{
 		("EnvironmentName", app.Environment.EnvironmentName),
+		("ApplicationTimeLocale", applicationCulture.Name),
 		("ContentRootPath", app.Environment.ContentRootPath),
 	};
 
@@ -202,6 +213,7 @@ try
 	var pipelineProperties = new (string Name, object? Value)[]
 	{
 		("EnvironmentName", app.Environment.EnvironmentName),
+		("ApplicationTimeLocale", applicationCulture.Name),
 	};
 
 	using(var scope = app.Logger.BeginExecutionScope(

@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260320085112_AddUserRatingsRankIndexes")]
+    partial class AddUserRatingsRankIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -411,24 +414,9 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.Property<DateOnly?>("LastCompletedLocalDate")
                         .HasColumnType("date");
 
-                    b.Property<int>("ScheduledHour")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(4);
-
-                    b.Property<int>("ScheduledMinute")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
                     b.HasKey("JobName");
 
-                    b.ToTable("user_ratings_refresh_state", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_user_ratings_refresh_state_hour_range", "\"ScheduledHour\" >= 0 AND \"ScheduledHour\" <= 23");
-
-                            t.HasCheckConstraint("ck_user_ratings_refresh_state_minute_range", "\"ScheduledMinute\" >= 0 AND \"ScheduledMinute\" <= 59");
-                        });
+                    b.ToTable("user_ratings_refresh_state", (string)null);
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.ImageEntity", b =>
