@@ -1350,6 +1350,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(UserRoleRules.IsAdmin(actor.Role))
 		{
+			if(submissionUserId.HasValue && submissionUserId.Value == actorUserId)
+			{
+				return TaskOperationError.TaskAccessDenied;
+			}
+
 			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
 				? TaskOperationError.TaskAutoVerificationNotSupported
 				: TaskOperationError.None;

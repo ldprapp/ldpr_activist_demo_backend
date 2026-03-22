@@ -619,6 +619,21 @@ public sealed class TasksController : ControllerBase
 					: TaskOperationError.InvalidCredentials);
 		}
 
+		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
+		if(invalidPagination is not null)
+		{
+			return invalidPagination;
+		}
+
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!actorAuth.IsSuccess)
+		{
+			return MapTaskError(
+				actorAuth.Error == ActorAuthenticationError.ValidationFailed
+					? TaskOperationError.ValidationFailed
+					: TaskOperationError.InvalidCredentials);
+		}
+
 		var actorHasCoordinatorAccess = UserRoleRules.HasCoordinatorAccess(actorAuth.Actor!.Role);
 
 		var invalidUserScope = TryBuildTaskFeedUserScopeValidationProblem(
@@ -713,6 +728,19 @@ public sealed class TasksController : ControllerBase
 				{
 					return MapTaskError(userSubmissionTaskIdsResult.Error);
 				}
+
+				var userSubmissionTaskIds = userSubmissionTaskIdsResult.Value.ToHashSet();
+				userScopedTasks = userScopedTasks.Where(t => userSubmissionTaskIds.Contains(t.Id));
+			}
+
+			var userScopedNowUtc = DateTimeOffset.UtcNow;
+			var userScopedOrderedTasks = ApplyDeadlineVisibilityAndSorting(userScopedTasks, sort, includeExpiredDeadlines, userScopedNowUtc);
+
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var userDtos = userScopedOrderedTasks.Select(ToDto).ToList();
+			return Ok(ApplyFeedPagination(userDtos, start, end));
+		}
 
 				var userSubmissionTaskIds = userSubmissionTaskIdsResult.Value.ToHashSet();
 				userScopedTasks = userScopedTasks.Where(t => userSubmissionTaskIds.Contains(t.Id));
