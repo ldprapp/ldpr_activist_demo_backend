@@ -6,4 +6,8 @@ public sealed record UserPointsTransactionDto(
 	DateTimeOffset TransactionAt,
 	string Comment,
 	Guid? CoordinatorUserId,
-	Guid? TaskId);
+	Guid? TaskId,
+	bool IsCancelled,
+	string CancellationComment,
+	DateTimeOffset? CancelledAtUtc,
+	Guid? CancelledByAdminUserId);

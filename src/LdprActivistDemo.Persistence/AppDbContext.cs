@@ -164,13 +164,28 @@ public sealed class AppDbContext : DbContext
 
 		modelBuilder.Entity<UserPointsTransaction>(b =>
 		{
-			b.ToTable("user_points_transactions");
+			b.ToTable("user_points_transactions", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_user_points_transactions_cancel_state",
+					"(\"IsCancelled\" = FALSE AND \"CancellationComment\" = '' AND \"CancelledAtUtc\" IS NULL AND \"CancelledByAdminUserId\" IS NULL) " +
+					"OR " +
+					"(\"IsCancelled\" = TRUE AND length(btrim(\"CancellationComment\")) > 0 AND \"CancelledAtUtc\" IS NOT NULL AND \"CancelledByAdminUserId\" IS NOT NULL)");
+			});
 			b.HasKey(x => x.Id);
 
 			b.Property(x => x.UserId).IsRequired();
 			b.Property(x => x.Amount).IsRequired();
 			b.Property(x => x.TransactionAt).IsRequired();
 			b.Property(x => x.Comment).IsRequired();
+			b.Property(x => x.IsCancelled)
+				.IsRequired()
+				.HasDefaultValue(false);
+			b.Property(x => x.CancellationComment)
+				.IsRequired()
+				.HasDefaultValue(string.Empty);
+			b.Property(x => x.CancelledAtUtc);
+			b.Property(x => x.CancelledByAdminUserId);
 			b.Property(x => x.CoordinatorUserId);
 			b.Property(x => x.TaskId);
 
@@ -184,6 +199,11 @@ public sealed class AppDbContext : DbContext
 				.HasForeignKey(x => x.CoordinatorUserId)
 				.OnDelete(DeleteBehavior.SetNull);
 
+			b.HasOne(x => x.CancelledByAdminUser)
+				.WithMany()
+				.HasForeignKey(x => x.CancelledByAdminUserId)
+				.OnDelete(DeleteBehavior.SetNull);
+
 			b.HasOne(x => x.Task)
 				.WithMany()
 				.HasForeignKey(x => x.TaskId)
@@ -191,6 +211,7 @@ public sealed class AppDbContext : DbContext
 
 			b.HasIndex(x => new { x.UserId, x.TransactionAt });
 			b.HasIndex(x => x.CoordinatorUserId);
+			b.HasIndex(x => x.CancelledByAdminUserId);
 			b.HasIndex(x => x.TaskId);
 		});
 

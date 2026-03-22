@@ -72,8 +72,9 @@ public static class ApplicationLogOperations
 		public const string RejectSubmission = "tasks.submission.reject";
 		public const string GetByUserSubmitted = "tasks.list.by_user_submitted";
 		public const string GetByUserApproved = "tasks.list.by_user_approved";
-		public const string GetSubmissionCoordinatorFeed = "tasks.submission.feed.coordinator";
-		public const string GetSubmissionUserFeed = "tasks.submission.feed.user";
+		public const string GetSubmissionReviewerFeed = "tasks.submission.feed.reviewer";
+		public const string GetSubmissionExecutorFeed = "tasks.submission.feed.executor";
+		public const string GetTaskIdsByUserSubmissionStatus = "tasks.submission.task_ids_by_user_status.get";
 		public const string GetSubmissionById = "tasks.submission.get";
 		public const string GetTaskUsers = "tasks.users.get";
 	}
@@ -83,6 +84,8 @@ public static class ApplicationLogOperations
 		public const string GetBalance = "user_points.balance.get";
 		public const string GetTransactions = "user_points.transactions.get";
 		public const string CreateTransaction = "user_points.transactions.create";
+		public const string CancelTransaction = "user_points.transactions.cancel";
+		public const string RestoreTransaction = "user_points.transactions.restore";
 	}
 
 	public static class UserRatings

@@ -82,8 +82,9 @@ public static class PersistenceLogOperations
 		public const string GetSubmittedUsers = "tasks.submission.users_submitted.get";
 		public const string GetApprovedUsers = "tasks.submission.users_approved.get";
 		public const string GetSubmittedUser = "tasks.submission.user_submitted.get";
-		public const string GetCoordinatorFeed = "tasks.submission.feed.coordinator";
-		public const string GetUserFeed = "tasks.submission.feed.user";
+		public const string GetReviewerFeed = "tasks.submission.feed.reviewer";
+		public const string GetExecutorFeed = "tasks.submission.feed.executor";
+		public const string GetTaskIdsByUserDecisionStatus = "tasks.submission.task_ids_by_user_decision_status.get";
 		public const string GetById = "tasks.submission.get";
 		public const string GetTaskUsers = "tasks.users.get";
 	}
@@ -113,6 +114,8 @@ public static class PersistenceLogOperations
 		public const string GetBalance = "user_points.balance.get";
 		public const string GetTransactions = "user_points.transactions.get";
 		public const string CreateTransaction = "user_points.transactions.create";
+		public const string CancelTransaction = "user_points.transactions.cancel";
+		public const string RestoreTransaction = "user_points.transactions.restore";
 	}
 
 	public static class UserRatings

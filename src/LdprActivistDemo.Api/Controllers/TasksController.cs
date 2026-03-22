@@ -3,6 +3,7 @@ using LdprActivistDemo.Api.Helpers;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
+using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Tasks;
@@ -26,12 +27,18 @@ public sealed class TasksController : ControllerBase
 	private readonly ITaskService _tasks;
 	private readonly ITaskFeedRepository _taskFeed;
 	private readonly IImageService _images;
+	private readonly IActorAccessService _actorAccess;
 
-	public TasksController(ITaskService tasks, ITaskFeedRepository taskFeed, IImageService images)
+	public TasksController(
+		ITaskService tasks,
+		ITaskFeedRepository taskFeed,
+		IImageService images,
+		IActorAccessService actorAccess)
 	{
 		_tasks = tasks;
 		_taskFeed = taskFeed;
 		_images = images;
+		_actorAccess = actorAccess;
 	}
 
 	public enum TaskFeedSort
@@ -51,11 +58,8 @@ public sealed class TasksController : ControllerBase
 
 	public enum SubmissionFeedSort
 	{
-		None = 0,
-		SubmittedNewest = 1,
-		SubmittedOldest = 2,
-		DecidedNewest = 3,
-		DecidedOldest = 4,
+		NewestFirst = 1,
+		OldestFirst = 2,
 	}
 
 	private static DateTimeOffset? GetDeadline(TaskModel t) => t.DeadlineAt;
@@ -525,18 +529,42 @@ public sealed class TasksController : ControllerBase
 	}
 
 	/// <summary>
-	/// Возвращает ленту задач для координатора или администратора.
+	/// Возвращает ленту задач, доступную текущему пользователю.
 	/// </summary>
 	/// <remarks>
-	/// Можно запрашивать только свои задачи, задачи по географии или общую доступную подборку.
-	/// Поддерживаются фильтрация по статусу, сортировка по дате публикации и дедлайну, а также пагинация по диапазону.
+	/// Параметры <c>actorUserId</c> и заголовок <c>X-Actor-Password</c> используются только
+	/// для аутентификации и проверки прав вызывающего пользователя.
+	/// Если задан <c>userId</c>, лента строится в пользовательском контексте этого пользователя:
+	/// возвращаются только задачи, доступные ему по географии.
+	/// Для пользователя с ролью <c>activist</c> параметр <c>userId</c> обязателен и должен совпадать
+	/// с <c>actorUserId</c>. Для <c>coordinator</c> и <c>admin</c> параметр <c>userId</c> опционален;
+	/// при его отсутствии используется расширенный режим coordinator/admin feed.
+	/// Параметр <c>submissionStatus</c> применяется только вместе с <c>userId</c> и оставляет
+	/// только те задачи, по которым у указанного пользователя есть хотя бы одна заявка
+	/// с таким статусом. Если <c>submissionStatus</c> задан без <c>userId</c>, он игнорируется.
+	/// В пользовательском режиме без <c>taskStatus</c> и без <c>submissionStatus</c> по умолчанию
+	/// возвращаются только открытые задачи, как и раньше.
 	/// </remarks>
 	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
 	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
-	/// <param name="onlyMine">Если <see langword="true"/>, возвращаются только задачи автора/ответственного координатора.</param>
+	/// <param name="onlyMine">
+	/// Для <c>coordinator</c>/<c>admin</c> без <c>userId</c>: если <see langword="true"/>,
+	/// возвращаются только свои задачи или задачи, где пользователь назначен ответственным координатором.
+	/// При заданном <c>userId</c> параметр игнорируется.
+	/// </param>
+	/// <param name="userId">
+	/// Идентификатор пользователя, для которого строится пользовательская лента.
+	/// Для <c>activist</c> обязателен и должен совпадать с <c>actorUserId</c>.
+	/// Для <c>coordinator</c>/<c>admin</c> опционален.
+	/// </param>
 	/// <param name="regionName">Опциональный фильтр по региону.</param>
 	/// <param name="settlementName">Опциональный фильтр по населённому пункту. Допустим только вместе с <c>regionName</c>.</param>
-	/// <param name="status">Опциональный фильтр по статусу задачи: <c>open</c> или <c>closed</c>.</param>
+	/// <param name="taskStatus">Опциональный фильтр по статусу задачи: <c>open</c> или <c>closed</c>.</param>
+	/// <param name="submissionStatus">
+	/// Опциональный фильтр по статусу заявки пользователя к задаче:
+	/// <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.
+	/// Учитывается только при заданном <c>userId</c>.
+	/// </param>
 	/// <param name="sort">Правило сортировки ленты.</param>
 	/// <param name="includeExpiredDeadlines">Включать ли задачи с уже истёкшим дедлайном.</param>
 	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
@@ -545,19 +573,19 @@ public sealed class TasksController : ControllerBase
 	/// <response code="200">Лента задач успешно возвращена.</response>
 	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
-	/// <response code="403">Пользователь не имеет доступа к административной ленте.</response>
-	[HttpGet("feed/coordinator")]
+	[HttpGet("feed")]
 	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-	public async Task<IActionResult> GetAdminFeedAsync(
+	public async Task<IActionResult> GetFeedAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromQuery] bool onlyMine = true,
+		[FromQuery] Guid? userId = null,
 		[FromQuery] string? regionName = null,
 		[FromQuery] string? settlementName = null,
-		[FromQuery] string? status = null,
+		[FromQuery] string? taskStatus = null,
+		[FromQuery] string? submissionStatus = null,
 		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
 		[FromQuery] bool includeExpiredDeadlines = false,
 		[FromQuery] int? start = null,
@@ -576,34 +604,127 @@ public sealed class TasksController : ControllerBase
 			return invalid;
 		}
 
-		var invalidFilters = TryBuildFeedFilterValidationProblem(regionName, settlementName);
-		if(invalidFilters is not null)
-		{
-			return invalidFilters;
-		}
-
-		if(!TryNormalizeTaskStatusFilter(status, out var normalizedStatusFilter, out var statusError))
-		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["status"] = new[] { statusError! },
-				},
-				title: "Некорректный запрос.",
-				detail: "Параметр status допускает только значения 'open' или 'closed' (или пустое значение, чтобы не фильтровать).");
-		}
-
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
 		if(invalidPagination is not null)
 		{
 			return invalidPagination;
 		}
 
-		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
-		if(!auth.IsSuccess)
+		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword!, cancellationToken);
+		if(!actorAuth.IsSuccess)
 		{
-			return MapTaskError(auth.Error);
+			return MapTaskError(
+				actorAuth.Error == ActorAuthenticationError.ValidationFailed
+					? TaskOperationError.ValidationFailed
+					: TaskOperationError.InvalidCredentials);
+		}
+
+		var actorHasCoordinatorAccess = UserRoleRules.HasCoordinatorAccess(actorAuth.Actor!.Role);
+
+		var invalidUserScope = TryBuildTaskFeedUserScopeValidationProblem(
+			actorUserId,
+			actorHasCoordinatorAccess,
+			userId);
+		if(invalidUserScope is not null)
+		{
+			return invalidUserScope;
+		}
+
+		var invalidFilters = TryBuildFeedFilterValidationProblem(regionName, settlementName);
+		if(invalidFilters is not null)
+		{
+			return invalidFilters;
+		}
+
+		if(!TryNormalizeTaskStatusFilter(taskStatus, out var normalizedTaskStatusFilter, out var taskStatusError))
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				new Dictionary<string, string[]>
+				{
+					["taskStatus"] = new[] { taskStatusError! },
+				},
+				title: "Некорректный запрос.",
+				detail: "Параметр taskStatus допускает только значения 'open' или 'closed' (или пустое значение, чтобы не фильтровать).");
+		}
+
+		string? normalizedSubmissionStatusFilter = null;
+		if(userId.HasValue)
+		{
+			if(!TryNormalizeSubmissionDecisionStatusFilter(
+				submissionStatus,
+				out normalizedSubmissionStatusFilter,
+				out var submissionStatusError))
+			{
+				return this.ValidationProblemWithCode(
+					ApiErrorCodes.ValidationFailed,
+					new Dictionary<string, string[]>
+					{
+						["submissionStatus"] = new[] { submissionStatusError! },
+					},
+					title: "Некорректный запрос.",
+					detail: "Параметр submissionStatus допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
+			}
+		}
+
+		if(userId.HasValue)
+		{
+			var availableForUserResult = await _tasks.GetAvailableForUserAsync(userId.Value, cancellationToken);
+			if(!availableForUserResult.IsSuccess || availableForUserResult.Value is null)
+			{
+				return MapTaskError(availableForUserResult.Error);
+			}
+
+			IEnumerable<TaskModel> userScopedTasks = availableForUserResult.Value;
+
+			if(!string.IsNullOrWhiteSpace(regionName))
+			{
+				userScopedTasks = string.IsNullOrWhiteSpace(settlementName)
+					? userScopedTasks.Where(t => string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase))
+					: userScopedTasks.Where(t =>
+						string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase)
+						&& string.Equals(t.SettlementName, settlementName, StringComparison.OrdinalIgnoreCase));
+			}
+
+			if(normalizedTaskStatusFilter is not null)
+			{
+				userScopedTasks = userScopedTasks.Where(t => string.Equals(
+					NormalizeTaskStatusForContract(t),
+					normalizedTaskStatusFilter,
+					StringComparison.Ordinal));
+			}
+			else if(normalizedSubmissionStatusFilter is null)
+			{
+				userScopedTasks = userScopedTasks.Where(t => string.Equals(
+					NormalizeTaskStatusForContract(t),
+					TaskStatus.Open,
+					StringComparison.Ordinal));
+			}
+
+			if(normalizedSubmissionStatusFilter is not null)
+			{
+				var userSubmissionTaskIdsResult = await _tasks.GetTaskIdsByUserSubmissionStatusAsync(
+					actorUserId,
+					actorUserPassword!,
+					userId.Value,
+					normalizedSubmissionStatusFilter,
+					cancellationToken);
+				if(!userSubmissionTaskIdsResult.IsSuccess || userSubmissionTaskIdsResult.Value is null)
+				{
+					return MapTaskError(userSubmissionTaskIdsResult.Error);
+				}
+
+				var userSubmissionTaskIds = userSubmissionTaskIdsResult.Value.ToHashSet();
+				userScopedTasks = userScopedTasks.Where(t => userSubmissionTaskIds.Contains(t.Id));
+			}
+
+			var userScopedNowUtc = DateTimeOffset.UtcNow;
+			var userScopedOrderedTasks = ApplyDeadlineVisibilityAndSorting(userScopedTasks, sort, includeExpiredDeadlines, userScopedNowUtc);
+
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var userDtos = userScopedOrderedTasks.Select(ToDto).ToList();
+			return Ok(ApplyFeedPagination(userDtos, start, end));
 		}
 
 		IEnumerable<TaskModel> tasks;
@@ -615,7 +736,7 @@ public sealed class TasksController : ControllerBase
 		else if(!string.IsNullOrWhiteSpace(regionName))
 		{
 			tasks = string.IsNullOrWhiteSpace(settlementName)
- 				? await _tasks.GetByRegionAsync(regionName!, cancellationToken)
+				? await _tasks.GetByRegionAsync(regionName!, cancellationToken)
 				: await _tasks.GetByRegionAndSettlementAsync(regionName!, settlementName!, cancellationToken);
 		}
 		else
@@ -642,96 +763,19 @@ public sealed class TasksController : ControllerBase
 		if(!string.IsNullOrWhiteSpace(regionName))
 		{
 			filtered = string.IsNullOrWhiteSpace(settlementName)
- 				? filtered.Where(t => string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase))
- 				: filtered.Where(t =>
- 					string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase)
+				? filtered.Where(t => string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase))
+				: filtered.Where(t =>
+					string.Equals(t.RegionName, regionName, StringComparison.OrdinalIgnoreCase)
 					&& string.Equals(t.SettlementName, settlementName, StringComparison.OrdinalIgnoreCase));
 		}
 
-		if(normalizedStatusFilter is not null)
+		if(normalizedTaskStatusFilter is not null)
 		{
 			filtered = filtered.Where(t => string.Equals(
 				NormalizeTaskStatusForContract(t),
-				normalizedStatusFilter,
+				normalizedTaskStatusFilter,
 				StringComparison.Ordinal));
 		}
-
-		var nowUtc = DateTimeOffset.UtcNow;
-		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
-
-		cancellationToken.ThrowIfCancellationRequested();
-
-		var dtos = ordered.Select(ToDto).ToList();
-		return Ok(ApplyFeedPagination(dtos, start, end));
-	}
-
-	/// <summary>
-	/// Возвращает ленту задач, доступных текущему пользователю по его географии и правам.
-	/// </summary>
-	/// <remarks>
-	/// В результирующую ленту попадают только открытые задачи.
-	/// </remarks>
-	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
-	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
-	/// <param name="sort">Правило сортировки ленты.</param>
-	/// <param name="includeExpiredDeadlines">Включать ли задачи с уже истёкшим дедлайном.</param>
-	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
-	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
-	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
-	/// <response code="200">Лента задач успешно возвращена.</response>
-	/// <response code="400">Переданы некорректные параметры пагинации или сортировки.</response>
-	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
-	/// <response code="404">Пользователь не найден.</response>
-	[HttpGet("feed/user")]
-	[ProducesResponseType(typeof(IReadOnlyList<TaskDto>), StatusCodes.Status200OK)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetUserFeedAsync(
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromQuery] TaskFeedSort sort = TaskFeedSort.None,
-		[FromQuery] bool includeExpiredDeadlines = false,
-		[FromQuery] int? start = null,
-		[FromQuery] int? end = null,
-		CancellationToken cancellationToken = default)
-	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null)
-		{
-			return invalidActor;
-		}
-
-		var invalid = TryBuildValidationProblemIfInvalidModel();
-		if(invalid is not null)
-		{
-			return invalid;
-		}
-
-		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
-		if(invalidPagination is not null)
-		{
-			return invalidPagination;
-		}
-
-		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
-		if(!auth.IsSuccess)
-		{
-			return MapTaskError(auth.Error);
-		}
-
-		var result = await _tasks.GetAvailableForUserAsync(actorUserId, cancellationToken);
-		if(!result.IsSuccess || result.Value is null)
-		{
-			return MapTaskError(result.Error);
-		}
-
-		IEnumerable<TaskModel> filtered = result.Value;
-
-		filtered = filtered.Where(t => string.Equals(
-			NormalizeTaskStatusForContract(t),
-			TaskStatus.Open,
-			StringComparison.Ordinal));
 
 		var nowUtc = DateTimeOffset.UtcNow;
 		var ordered = ApplyDeadlineVisibilityAndSorting(filtered, sort, includeExpiredDeadlines, nowUtc);
@@ -961,14 +1005,23 @@ public sealed class TasksController : ControllerBase
 	/// </summary>
 	/// <remarks>
 	/// Поддерживаются фильтрация по статусу решения, задаче, пользователю и сортировка
-	/// по времени отправки или принятия решения.
+	/// по времени отправки заявки.
+	/// Координатор видит только заявки по задачам, где он является автором
+	/// или назначен ответственным координатором. Администратор видит заявки
+	/// по любым задачам, кроме собственных заявок.
+	/// Параметр <c>actorUserId</c> используется только для аутентификации и проверки роли.
+	/// Параметр <c>reviewerUserId</c> определяет пользователя, в контексте которого строится reviewer-feed.
+	/// Сейчас <c>reviewerUserId</c> может быть либо пустым, либо равным <c>actorUserId</c>.
+	/// Параметр <c>userId</c> остаётся только фильтром по пользователю, чьи заявки нужно показать.
+	/// Для текущей очереди заявок “На проверке” используйте <c>status=submitted_for_review</c>.
 	/// </remarks>
 	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего ленту.</param>
 	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
 	/// <param name="status">Опциональный фильтр по статусу заявки: <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.</param>
 	/// <param name="taskId">Опциональный фильтр по задаче.</param>
-	/// <param name="userId">Опциональный фильтр по пользователю.</param>
-	/// <param name="sort">Правило сортировки ленты.</param>
+	/// <param name="userId">Опциональный фильтр по пользователю, чьи заявки нужно показать.</param>
+	/// <param name="reviewerUserId">Опциональный идентификатор пользователя, в контексте которого нужно построить reviewer-feed.</param>
+	/// <param name="sort">Правило сортировки ленты: сначала новые или сначала старые.</param>
 	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
@@ -977,19 +1030,20 @@ public sealed class TasksController : ControllerBase
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
 	/// <response code="403">Пользователь не имеет доступа к административной ленте заявок.</response>
 	/// <response code="404">Связанный объект не найден.</response>
-	[HttpGet("submit/feed/coordinator")]
+	[HttpGet("submit/feed/reviewer")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetSubmissionAdminFeedAsync(
+	public async Task<IActionResult> GetSubmissionReviewerFeedAsync(
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		[FromQuery] string? status = null,
 		[FromQuery] Guid? taskId = null,
 		[FromQuery] Guid? userId = null,
-		[FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.None,
+		[FromQuery] Guid? reviewerUserId = null,
+		[FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.NewestFirst,
 		[FromQuery] int? start = null,
 		[FromQuery] int? end = null,
 		CancellationToken cancellationToken = default)
@@ -1012,6 +1066,12 @@ public sealed class TasksController : ControllerBase
 			return invalidFilters;
 		}
 
+		var invalidReviewerScope = TryBuildReviewerFeedScopeValidationProblem(actorUserId, reviewerUserId);
+		if(invalidReviewerScope is not null)
+		{
+			return invalidReviewerScope;
+		}
+
 		if(!TryNormalizeSubmissionDecisionStatusFilter(status, out var normalizedStatus, out var statusError))
 		{
 			return this.ValidationProblemWithCode(
@@ -1024,15 +1084,24 @@ public sealed class TasksController : ControllerBase
 				detail: "Параметр status допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
 		}
 
+		var invalidSort = TryBuildSubmissionFeedSortValidationProblem(sort);
+		if(invalidSort is not null)
+		{
+			return invalidSort;
+		}
+
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
 		if(invalidPagination is not null)
 		{
 			return invalidPagination;
 		}
 
-		var result = await _tasks.GetSubmissionCoordinatorFeedAsync(
+		var effectiveReviewerUserId = reviewerUserId ?? actorUserId;
+
+		var result = await _tasks.GetSubmissionReviewerFeedAsync(
 			actorUserId,
 			actorUserPassword!,
+			effectiveReviewerUserId,
 			taskId,
 			userId,
 			normalizedStatus,
@@ -1051,7 +1120,7 @@ public sealed class TasksController : ControllerBase
 	}
 
 	/// <summary>
-	/// Возвращает пользовательскую ленту собственных заявок.
+	/// Возвращает ленту собственных заявок исполнителя.
 	/// </summary>
 	/// <remarks>
 	/// Пользователь может запрашивать только свои заявки, поэтому <c>userId</c> должен совпадать с <c>actorUserId</c>.
@@ -1061,7 +1130,7 @@ public sealed class TasksController : ControllerBase
 	/// <param name="taskId">Опциональный фильтр по задаче.</param>
 	/// <param name="userId">Идентификатор пользователя-владельца заявок. Должен совпадать с <c>actorUserId</c>.</param>
 	/// <param name="status">Опциональный фильтр по статусу заявки: <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.</param>
-	/// <param name="sort">Правило сортировки ленты.</param>
+	/// <param name="sort">Правило сортировки ленты: сначала новые или сначала старые.</param>
 	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
@@ -1069,18 +1138,18 @@ public sealed class TasksController : ControllerBase
 	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
 	/// <response code="404">Связанный объект не найден.</response>
-	[HttpGet("submit/feed/user")]
+	[HttpGet("submit/feed/executor")]
 	[ProducesResponseType(typeof(IReadOnlyList<SubmissionDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-	public async Task<IActionResult> GetSubmissionUserFeedAsync(
+	public async Task<IActionResult> GetSubmissionExecutorFeedAsync(
 		 [FromQuery] Guid actorUserId,
 		 [FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		 [FromQuery] Guid? taskId,
 		 [FromQuery] Guid userId,
 		 [FromQuery] string? status = null,
-		 [FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.None,
+		 [FromQuery] SubmissionFeedSort sort = SubmissionFeedSort.NewestFirst,
 		 [FromQuery] int? start = null,
 		 [FromQuery] int? end = null,
 		 CancellationToken cancellationToken = default)
@@ -1121,13 +1190,19 @@ public sealed class TasksController : ControllerBase
 				detail: "Параметр status допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected' (или пустое значение, чтобы не фильтровать).");
 		}
 
+		var invalidSort = TryBuildSubmissionFeedSortValidationProblem(sort);
+		if(invalidSort is not null)
+		{
+			return invalidSort;
+		}
+
 		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
 		if(invalidPagination is not null)
 		{
 			return invalidPagination;
 		}
 
-		var result = await _tasks.GetSubmissionUserFeedAsync(
+		var result = await _tasks.GetSubmissionExecutorFeedAsync(
 			actorUserId,
 			actorUserPassword!,
 			taskId,
@@ -1301,6 +1376,7 @@ public sealed class TasksController : ControllerBase
 	/// </summary>
 	/// <remarks>
 	/// Операция доступна автору задачи, доверенному координатору задачи или администратору.
+	/// Администратор не может одобрять собственную заявку, даже если видит её в reviewer-feed.
 	/// При успешном одобрении пользователю может быть начислена награда задачи.
 	/// </remarks>
 	/// <param name="submitId">Идентификатор заявки.</param>
@@ -1341,6 +1417,7 @@ public sealed class TasksController : ControllerBase
 	/// </summary>
 	/// <remarks>
 	/// Операция доступна автору задачи, доверенному координатору задачи или администратору.
+	/// Администратор не может отклонять собственную заявку, даже если видит её в reviewer-feed.
 	/// </remarks>
 	/// <param name="submitId">Идентификатор заявки.</param>
 	/// <param name="actorUserId">Идентификатор пользователя, принимающего решение.</param>
@@ -1541,38 +1618,104 @@ public sealed class TasksController : ControllerBase
 
 		switch(sort)
 		{
-			case SubmissionFeedSort.SubmittedNewest:
+			case SubmissionFeedSort.OldestFirst:
 				return list
-					.OrderByDescending(s => s.SubmittedAt)
+				   .OrderBy(s => s.SubmittedAt)
 					.ThenBy(s => s.Id)
 					.ToList();
 
-			case SubmissionFeedSort.SubmittedOldest:
-				return list
-					.OrderBy(s => s.SubmittedAt)
-					.ThenBy(s => s.Id)
-					.ToList();
-
-			case SubmissionFeedSort.DecidedNewest:
-				return list
-					.OrderByDescending(s => s.DecidedAt ?? DateTimeOffset.MinValue)
-					.ThenBy(s => s.Id)
-					.ToList();
-
-			case SubmissionFeedSort.DecidedOldest:
-				return list
-					.OrderBy(s => s.DecidedAt ?? DateTimeOffset.MaxValue)
-					.ThenBy(s => s.Id)
-					.ToList();
-
-			case SubmissionFeedSort.None:
+			case SubmissionFeedSort.NewestFirst:
 			default:
-				return list;
+				return list
+				   .OrderByDescending(s => s.SubmittedAt)
+					.ThenBy(s => s.Id)
+				   .ToList();
 		}
+	}
+
+	private IActionResult? TryBuildSubmissionFeedSortValidationProblem(SubmissionFeedSort sort)
+	{
+		if(sort is SubmissionFeedSort.NewestFirst or SubmissionFeedSort.OldestFirst)
+		{
+			return null;
+		}
+
+		return this.ValidationProblemWithCode(
+			ApiErrorCodes.ValidationFailed,
+			new Dictionary<string, string[]>
+			{
+				["sort"] = new[]
+				{
+					"Sort must be 'NewestFirst' or 'OldestFirst' (or numeric values 1 or 2).",
+				},
+			},
+			title: "Некорректный запрос.",
+			detail: "Параметр sort допускает только два варианта сортировки: сначала новые или сначала старые.");
 	}
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
 		=> this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
+
+	private IActionResult? TryBuildReviewerFeedScopeValidationProblem(
+		Guid actorUserId,
+		Guid? reviewerUserId)
+	{
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(reviewerUserId.HasValue && reviewerUserId.Value == Guid.Empty)
+		{
+			errors["reviewerUserId"] = new[] { "ReviewerUserId must be non-empty GUID." };
+		}
+
+		if(reviewerUserId.HasValue && reviewerUserId.Value != actorUserId)
+		{
+			errors["reviewerUserId"] = new[]
+			{
+				"ReviewerUserId must be equal to actorUserId or be omitted.",
+			};
+		}
+
+		return errors.Count == 0
+			? null
+			: this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Параметр reviewerUserId задаёт пользователя, в контексте которого строится reviewer-feed. Сейчас допускается только пустое значение или значение, равное actorUserId.");
+	}
+
+	private IActionResult? TryBuildTaskFeedUserScopeValidationProblem(
+		Guid actorUserId,
+		bool actorHasCoordinatorAccess,
+		Guid? userId)
+	{
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(userId.HasValue && userId.Value == Guid.Empty)
+		{
+			errors["userId"] = new[] { "UserId must be non-empty GUID." };
+		}
+
+		if(!actorHasCoordinatorAccess)
+		{
+			if(!userId.HasValue)
+			{
+				errors["userId"] = new[] { "UserId is required for activist task feed." };
+			}
+			else if(userId.Value != actorUserId)
+			{
+				errors["userId"] = new[] { "UserId must be equal to actorUserId for activist task feed." };
+			}
+		}
+
+		return errors.Count == 0
+			? null
+			: this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Для activist параметр userId обязателен и должен совпадать с actorUserId. Для coordinator/admin userId может быть пустым или указывать любого пользователя.");
+	}
 
 	private IActionResult? TryBuildFeedFilterValidationProblem(string? regionName, string? settlementName)
 	{

@@ -28,36 +28,21 @@ public sealed class UserPointsController : ControllerBase
 	/// Возвращает текущий баланс баллов пользователя.
 	/// </summary>
 	/// <remarks>
-	/// Пользователь может просматривать собственный баланс. Координатор и администратор
-	/// могут просматривать баланс других пользователей.
+	/// Баланс пользователя доступен любому пользователю без аутентификации.
 	/// </remarks>
 	/// <param name="userId">Идентификатор пользователя, чей баланс требуется получить.</param>
-	/// <param name="actorUserId">Идентификатор пользователя, выполняющего запрос.</param>
-	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
 	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
 	/// <response code="200">Баланс успешно возвращён.</response>
 	/// <response code="400">Переданы некорректные параметры запроса.</response>
-	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
-	/// <response code="403">Пользователь не имеет права просматривать баланс указанного пользователя.</response>
 	/// <response code="404">Пользователь не найден.</response>
 	[HttpGet("balance")]
 	[ProducesResponseType(typeof(UserPointsBalanceResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
-	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 	public async Task<IActionResult> GetBalanceAsync(
 		[FromRoute] Guid userId,
-		[FromQuery] Guid actorUserId,
-		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
 		CancellationToken cancellationToken)
 	{
-		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
-		if(invalidActor is not null)
-		{
-			return invalidActor;
-		}
-
 		if(userId == Guid.Empty)
 		{
 			return this.ValidationProblemWithCode(
@@ -70,7 +55,7 @@ public sealed class UserPointsController : ControllerBase
 				detail: "Передайте корректный userId.");
 		}
 
-		var result = await _points.GetBalanceAsync(actorUserId, actorUserPassword!, userId, cancellationToken);
+		var result = await _points.GetBalanceAsync(userId, cancellationToken);
 		if(!result.IsSuccess)
 		{
 			return MapPointsError(result.Error);
@@ -83,8 +68,7 @@ public sealed class UserPointsController : ControllerBase
 	/// Возвращает историю транзакций баллов пользователя.
 	/// </summary>
 	/// <remarks>
-	/// Пользователь может просматривать только собственные транзакции. Координатор и администратор
-	/// могут просматривать транзакции других пользователей.
+	/// История транзакций доступна только самому пользователю или пользователю с ролью администратора.
 	/// </remarks>
 	/// <param name="userId">Идентификатор пользователя, чьи транзакции требуется получить.</param>
 	/// <param name="actorUserId">Идентификатор пользователя, выполняющего запрос.</param>
@@ -248,6 +232,120 @@ public sealed class UserPointsController : ControllerBase
 		return Created($"/api/v1/users/{userId}/points/transactions/{id}", new CreateUserPointsTransactionResponse(id));
 	}
 
+	/// <summary>
+	/// Отменяет транзакцию баллов пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только администратору.
+	/// </remarks>
+	[HttpPost("~/api/v1/user-points/transactions/{transactionId:guid}/cancel")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<IActionResult> CancelTransactionAsync(
+		[FromRoute] Guid transactionId,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		[FromBody] CancelUserPointsTransactionRequest request,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+		if(transactionId == Guid.Empty)
+		{
+			errors["transactionId"] = new[] { "TransactionId must be non-empty GUID." };
+		}
+
+		var cancellationComment = (request?.Comment ?? string.Empty).Trim();
+		if(cancellationComment.Length == 0)
+		{
+			errors["comment"] = new[] { "Comment is required." };
+		}
+
+		if(errors.Count > 0)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте поля transactionId и comment.");
+		}
+
+		var result = await _points.CancelTransactionAsync(
+			actorUserId,
+			actorUserPassword!,
+			transactionId,
+			cancellationComment,
+			cancellationToken);
+
+		if(!result.IsSuccess)
+		{
+			return MapPointsError(result.Error);
+		}
+
+		return NoContent();
+	}
+
+	/// <summary>
+	/// Возвращает ранее отменённую транзакцию баллов пользователя.
+	/// </summary>
+	/// <remarks>
+	/// Операция доступна только администратору.
+	/// </remarks>
+	[HttpPost("~/api/v1/user-points/transactions/{transactionId:guid}/restore")]
+	[ProducesResponseType(StatusCodes.Status204NoContent)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+	public async Task<IActionResult> RestoreTransactionAsync(
+		[FromRoute] Guid transactionId,
+		[FromQuery] Guid actorUserId,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
+		CancellationToken cancellationToken)
+	{
+		var invalidActor = TryBuildActorValidationProblem(actorUserId, actorUserPassword);
+		if(invalidActor is not null)
+		{
+			return invalidActor;
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+		if(transactionId == Guid.Empty)
+		{
+			errors["transactionId"] = new[] { "TransactionId must be non-empty GUID." };
+		}
+
+		if(errors.Count > 0)
+		{
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте поле transactionId.");
+		}
+
+		var result = await _points.RestoreTransactionAsync(
+			actorUserId,
+			actorUserPassword!,
+			transactionId,
+			cancellationToken);
+
+		if(!result.IsSuccess)
+		{
+			return MapPointsError(result.Error);
+		}
+
+		return NoContent();
+	}
+
 	private static UserPointsTransactionDto ToDto(UserPointsTransactionModel t)
 		=> new(
 			t.Id,
@@ -255,7 +353,11 @@ public sealed class UserPointsController : ControllerBase
 			t.TransactionAt,
 			t.Comment,
 			t.CoordinatorUserId,
-			t.TaskId);
+			t.TaskId,
+			t.IsCancelled,
+			t.CancellationComment,
+			t.CancelledAtUtc,
+			t.CancelledByAdminUserId);
 
 	private IActionResult? TryBuildActorValidationProblem(Guid actorUserId, string? actorUserPassword)
 		=> this.TryBuildActorRequestValidationProblem(actorUserId, actorUserPassword, ActorPasswordHeader);
@@ -286,6 +388,12 @@ public sealed class UserPointsController : ControllerBase
 				ApiErrorCodes.UserPointsInsufficientBalance,
 				"Недостаточно баллов.",
 				"Операция приводит к отрицательному балансу."),
+
+			UserPointsError.TransactionNotFound => this.ProblemWithCode(
+				StatusCodes.Status404NotFound,
+				ApiErrorCodes.UserPointsTransactionNotFound,
+				"Транзакция не найдена.",
+				"Транзакция не найдена для указанного пользователя."),
 
 			UserPointsError.UserNotFound => this.ProblemWithCode(
 				StatusCodes.Status404NotFound,

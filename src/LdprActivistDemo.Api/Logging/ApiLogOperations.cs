@@ -63,13 +63,12 @@ public static class ApiLogOperations
 		public const string Close = "tasks.close";
 		public const string Open = "tasks.open";
 		public const string Get = "tasks.get";
-		public const string GetCoordinatorFeed = "tasks.feed.coordinator";
-		public const string GetUserFeed = "tasks.feed.user";
+		public const string GetFeed = "tasks.feed.get";
 		public const string CreateSubmission = "tasks.submission.create";
 		public const string SubmitForReview = "tasks.submission.submit_for_review";
 		public const string UpdateSubmission = "tasks.submission.update";
-		public const string GetCoordinatorSubmissionFeed = "tasks.submission.feed.coordinator";
-		public const string GetUserSubmissionFeed = "tasks.submission.feed.user";
+		public const string GetReviewerSubmissionFeed = "tasks.submission.feed.reviewer";
+		public const string GetExecutorSubmissionFeed = "tasks.submission.feed.executor";
 		public const string GetSubmission = "tasks.submission.get";
 		public const string GetTaskUsers = "tasks.users.get";
 		public const string ApproveSubmission = "tasks.submission.approve";
@@ -81,6 +80,8 @@ public static class ApiLogOperations
 		public const string GetBalance = "user_points.balance.get";
 		public const string GetTransactions = "user_points.transactions.get";
 		public const string CreateTransaction = "user_points.transactions.create";
+		public const string CancelTransaction = "user_points.transactions.cancel";
+		public const string RestoreTransaction = "user_points.transactions.restore";
 	}
 
 	public static class Users

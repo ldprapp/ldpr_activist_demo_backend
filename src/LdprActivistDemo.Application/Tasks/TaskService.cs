@@ -352,29 +352,37 @@ public sealed class TaskService : ITaskService
 			("ActorUserId", actorUserId));
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionCoordinatorFeedAsync(
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionReviewerFeedAsync(
 		Guid actorUserId,
 		string actorUserPassword,
+		Guid reviewerUserId,
 		Guid? taskId,
 		Guid? userId,
 		string? decisionStatus,
 		CancellationToken cancellationToken)
 	{
 		return await ExecuteAsync(
-			DomainLogEvents.TaskSubmission.GetCoordinatorFeed,
-			ApplicationLogOperations.Tasks.GetSubmissionCoordinatorFeed,
+			DomainLogEvents.TaskSubmission.GetReviewerFeed,
+			ApplicationLogOperations.Tasks.GetSubmissionReviewerFeed,
 			async () =>
 			{
+				if(reviewerUserId == Guid.Empty)
+				{
+					return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.ValidationFailed);
+				}
+
 				var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
 				return authError is null
-					? await _submissions.GetCoordinatorFeedAsync(actorUserId, taskId, userId, decisionStatus, cancellationToken)
+					? await _submissions.GetReviewerFeedAsync(reviewerUserId, taskId, userId, decisionStatus, cancellationToken)
 					: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
 			},
 			cancellationToken,
-			("ActorUserId", actorUserId), ("TaskId", taskId), ("UserId", userId), ("DecisionStatus", decisionStatus));
+			("ActorUserId", actorUserId),
+			("ReviewerUserId", reviewerUserId),
+			("TaskId", taskId), ("UserId", userId), ("DecisionStatus", decisionStatus));
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionUserFeedAsync(
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetSubmissionExecutorFeedAsync(
 		Guid actorUserId,
 		string actorUserPassword,
 		Guid? taskId,
@@ -383,8 +391,8 @@ public sealed class TaskService : ITaskService
 		CancellationToken cancellationToken)
 	{
 		return await ExecuteAsync(
-			DomainLogEvents.TaskSubmission.GetUserFeed,
-			ApplicationLogOperations.Tasks.GetSubmissionUserFeed,
+			DomainLogEvents.TaskSubmission.GetExecutorFeed,
+			ApplicationLogOperations.Tasks.GetSubmissionExecutorFeed,
 			async () =>
 			{
 				if(userId == Guid.Empty || actorUserId != userId)
@@ -399,11 +407,42 @@ public sealed class TaskService : ITaskService
 
 				var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
 				return authError is null
-					? await _submissions.GetUserFeedAsync(taskId, userId, decisionStatus, cancellationToken)
+					? await _submissions.GetExecutorFeedAsync(taskId, userId, decisionStatus, cancellationToken)
 					: TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(authError.Value);
 			},
 			cancellationToken,
 			("ActorUserId", actorUserId), ("TaskId", taskId), ("UserId", userId), ("DecisionStatus", decisionStatus));
+	}
+
+	public async Task<TaskOperationResult<IReadOnlyList<Guid>>> GetTaskIdsByUserSubmissionStatusAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		string decisionStatus,
+		CancellationToken cancellationToken)
+	{
+		return await ExecuteAsync(
+			DomainLogEvents.TaskSubmission.GetTaskIdsByUserDecisionStatus,
+			ApplicationLogOperations.Tasks.GetTaskIdsByUserSubmissionStatus,
+			async () =>
+			{
+				if(userId == Guid.Empty || string.IsNullOrWhiteSpace(decisionStatus))
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+				return authError is null
+					? await _submissions.GetTaskIdsByUserAndDecisionStatusAsync(
+						userId,
+						decisionStatus,
+						cancellationToken)
+					: TaskOperationResult<IReadOnlyList<Guid>>.Fail(authError.Value);
+			},
+			cancellationToken,
+			("ActorUserId", actorUserId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus));
 	}
 
 	public async Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken)

@@ -8,4 +8,5 @@ public enum UserPointsError
 	Forbidden = 3,
 	UserNotFound = 4,
 	InsufficientBalance = 5,
+	TransactionNotFound = 6,
 }

@@ -650,11 +650,37 @@ public sealed class UserService : IUserService
 			("RegionName", regionName),
 			("SettlementName", settlementName));
 
-	public Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(string? role, string? regionName, string? settlementName, CancellationToken cancellationToken)
+	public Task<IReadOnlyList<UserPublicModel>> GetUsersAsync(
+		string? role,
+		string? regionName,
+		string? settlementName,
+		CancellationToken cancellationToken)
 		=> ExecuteReadAsync(
 			DomainLogEvents.User.GetUsers,
 			ApplicationLogOperations.Users.GetUsers,
-			() => _users.GetByFiltersAsync(role, regionName, settlementName, cancellationToken),
+			async () =>
+			{
+				if(string.Equals(role, UserRoles.Coordinator, StringComparison.Ordinal))
+				{
+					var users = await _users.GetByFiltersAsync(
+						role: null,
+						regionName,
+						settlementName,
+						cancellationToken);
+
+					return users
+						.Where(x =>
+							string.Equals(x.Role, UserRoles.Coordinator, StringComparison.OrdinalIgnoreCase)
+							|| string.Equals(x.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
+						.ToList();
+				}
+
+				return await _users.GetByFiltersAsync(
+					role,
+					regionName,
+					settlementName,
+					cancellationToken);
+			},
 			cancellationToken,
 			result => new (string Name, object? Value)[]
 			{
