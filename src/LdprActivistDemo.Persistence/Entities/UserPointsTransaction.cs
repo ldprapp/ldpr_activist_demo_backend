@@ -13,6 +13,15 @@ public sealed class UserPointsTransaction
 
 	public string Comment { get; set; } = string.Empty;
 
+	public bool IsCancelled { get; set; }
+
+	public string CancellationComment { get; set; } = string.Empty;
+
+	public DateTimeOffset? CancelledAtUtc { get; set; }
+
+	public Guid? CancelledByAdminUserId { get; set; }
+	public User? CancelledByAdminUser { get; set; }
+
 	public Guid? CoordinatorUserId { get; set; }
 	public User? CoordinatorUser { get; set; }
 

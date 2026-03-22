@@ -227,8 +227,9 @@ public static class DomainLogEvents
 			public const string GetSubmittedUsers = "tasks.submission.service.users_submitted.get";
 			public const string GetApprovedUsers = "tasks.submission.service.users_approved.get";
 			public const string GetSubmittedUser = "tasks.submission.service.user_submitted.get";
-			public const string GetCoordinatorFeed = "tasks.submission.service.feed.coordinator";
-			public const string GetUserFeed = "tasks.submission.service.feed.user";
+			public const string GetReviewerFeed = "tasks.submission.service.feed.reviewer";
+			public const string GetExecutorFeed = "tasks.submission.service.feed.executor";
+			public const string GetTaskIdsByUserDecisionStatus = "tasks.submission.service.task_ids_by_user_decision_status.get";
 			public const string GetById = "tasks.submission.service.get";
 			public const string GetTaskUsers = "tasks.submission.service.users.get";
 		}
@@ -244,8 +245,9 @@ public static class DomainLogEvents
 			public const string GetSubmittedUsers = "tasks.submission.repository.users_submitted.get";
 			public const string GetApprovedUsers = "tasks.submission.repository.users_approved.get";
 			public const string GetSubmittedUser = "tasks.submission.repository.user_submitted.get";
-			public const string GetCoordinatorFeed = "tasks.submission.repository.feed.coordinator";
-			public const string GetUserFeed = "tasks.submission.repository.feed.user";
+			public const string GetReviewerFeed = "tasks.submission.repository.feed.reviewer";
+			public const string GetExecutorFeed = "tasks.submission.repository.feed.executor";
+			public const string GetTaskIdsByUserDecisionStatus = "tasks.submission.repository.task_ids_by_user_decision_status.get";
 			public const string GetById = "tasks.submission.repository.get";
 			public const string GetTaskUsers = "tasks.submission.repository.users.get";
 		}
@@ -259,8 +261,9 @@ public static class DomainLogEvents
 		public const string GetSubmittedUsers = Service.GetSubmittedUsers;
 		public const string GetApprovedUsers = Service.GetApprovedUsers;
 		public const string GetSubmittedUser = Service.GetSubmittedUser;
-		public const string GetCoordinatorFeed = Service.GetCoordinatorFeed;
-		public const string GetUserFeed = Service.GetUserFeed;
+		public const string GetReviewerFeed = Service.GetReviewerFeed;
+		public const string GetExecutorFeed = Service.GetExecutorFeed;
+		public const string GetTaskIdsByUserDecisionStatus = Service.GetTaskIdsByUserDecisionStatus;
 		public const string GetById = Service.GetById;
 		public const string GetTaskUsers = Service.GetTaskUsers;
 	}
@@ -341,6 +344,8 @@ public static class DomainLogEvents
 			public const string GetBalance = "user_points.service.balance.get";
 			public const string GetTransactions = "user_points.service.transactions.get";
 			public const string CreateTransaction = "user_points.service.transactions.create";
+			public const string CancelTransaction = "user_points.service.transactions.cancel";
+			public const string RestoreTransaction = "user_points.service.transactions.restore";
 		}
 
 		public static class Repository
@@ -348,11 +353,15 @@ public static class DomainLogEvents
 			public const string GetBalance = "user_points.repository.balance.get";
 			public const string GetTransactions = "user_points.repository.transactions.get";
 			public const string CreateTransaction = "user_points.repository.transactions.create";
+			public const string CancelTransaction = "user_points.repository.transactions.cancel";
+			public const string RestoreTransaction = "user_points.repository.transactions.restore";
 		}
 
 		public const string GetBalance = Service.GetBalance;
 		public const string GetTransactions = Service.GetTransactions;
 		public const string CreateTransaction = Service.CreateTransaction;
+		public const string CancelTransaction = Service.CancelTransaction;
+		public const string RestoreTransaction = Service.RestoreTransaction;
 	}
 
 	public static class UserRatings

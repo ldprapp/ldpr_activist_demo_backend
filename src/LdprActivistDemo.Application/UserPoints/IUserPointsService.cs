@@ -5,8 +5,6 @@ namespace LdprActivistDemo.Application.UserPoints;
 public interface IUserPointsService
 {
 	Task<UserPointsResult<int>> GetBalanceAsync(
-		Guid actorUserId,
-		string actorUserPassword,
 		Guid userId,
 		CancellationToken cancellationToken);
 
@@ -24,5 +22,18 @@ public interface IUserPointsService
 		string comment,
 		Guid? coordinatorUserId,
 		Guid? taskId,
+		CancellationToken cancellationToken);
+
+	Task<UserPointsResult<bool>> CancelTransactionAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid transactionId,
+		string cancellationComment,
+		CancellationToken cancellationToken);
+
+	Task<UserPointsResult<bool>> RestoreTransactionAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid transactionId,
 		CancellationToken cancellationToken);
 }

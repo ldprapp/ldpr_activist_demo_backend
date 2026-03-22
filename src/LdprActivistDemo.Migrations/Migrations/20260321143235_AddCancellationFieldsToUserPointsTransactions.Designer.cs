@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260321143235_AddCancellationFieldsToUserPointsTransactions")]
+    partial class AddCancellationFieldsToUserPointsTransactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -360,12 +363,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .HasColumnType("text")
                         .HasDefaultValue("");
 
-                    b.Property<DateTimeOffset?>("CancelledAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CancelledByAdminUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Comment")
                         .IsRequired()
                         .HasColumnType("text");
@@ -389,18 +386,13 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CancelledByAdminUserId");
-
                     b.HasIndex("CoordinatorUserId");
 
                     b.HasIndex("TaskId");
 
                     b.HasIndex("UserId", "TransactionAt");
 
-                    b.ToTable("user_points_transactions", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_user_points_transactions_cancel_state", "(\"IsCancelled\" = FALSE AND \"CancellationComment\" = '' AND \"CancelledAtUtc\" IS NULL AND \"CancelledByAdminUserId\" IS NULL) OR (\"IsCancelled\" = TRUE AND length(btrim(\"CancellationComment\")) > 0 AND \"CancelledAtUtc\" IS NOT NULL AND \"CancelledByAdminUserId\" IS NOT NULL)");
-                        });
+                    b.ToTable("user_points_transactions", (string)null);
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.UserRating", b =>
@@ -602,11 +594,6 @@ namespace LdprActivistDemo.Migrations.Migrations
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.UserPointsTransaction", b =>
                 {
-                    b.HasOne("LdprActivistDemo.Persistence.User", "CancelledByAdminUser")
-                        .WithMany()
-                        .HasForeignKey("CancelledByAdminUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("LdprActivistDemo.Persistence.User", "CoordinatorUser")
                         .WithMany()
                         .HasForeignKey("CoordinatorUserId")
@@ -622,8 +609,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("CancelledByAdminUser");
 
                     b.Navigation("CoordinatorUser");
 

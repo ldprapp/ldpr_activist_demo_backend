@@ -32,7 +32,7 @@ public sealed class UserPointsTransactionRepository : IUserPointsTransactionRepo
 		}
 
 		var sum = await _db.UserPointsTransactions.AsNoTracking()
-			.Where(x => x.UserId == userId)
+			.Where(x => x.UserId == userId && !x.IsCancelled)
 			.SumAsync(x => (int?)x.Amount, cancellationToken);
 
 		return sum ?? 0;
@@ -74,7 +74,11 @@ public sealed class UserPointsTransactionRepository : IUserPointsTransactionRepo
 				x.TransactionAt,
 				x.Comment,
 				x.CoordinatorUserId,
-				x.TaskId))
+				x.TaskId,
+				x.IsCancelled,
+				x.CancellationComment,
+				x.CancelledAtUtc,
+				x.CancelledByAdminUserId))
 			.ToListAsync(cancellationToken);
 
 		return list;
@@ -118,11 +122,74 @@ public sealed class UserPointsTransactionRepository : IUserPointsTransactionRepo
 			Amount = amount,
 			TransactionAt = transactionAtUtc,
 			Comment = comment.Trim(),
+			IsCancelled = false,
+			CancellationComment = string.Empty,
+			CancelledAtUtc = null,
+			CancelledByAdminUserId = null,
 			CoordinatorUserId = coordinatorUserId,
 			TaskId = taskId,
 		});
 
 		await _db.SaveChangesAsync(cancellationToken);
 		return id;
+	}
+
+	public async Task<bool> CancelAsync(
+		Guid transactionId,
+		string cancellationComment,
+		Guid cancelledByAdminUserId,
+		DateTimeOffset cancelledAtUtc,
+		CancellationToken cancellationToken)
+	{
+		if(transactionId == Guid.Empty || cancelledByAdminUserId == Guid.Empty)
+		{
+			return false;
+		}
+
+		var transaction = await _db.UserPointsTransactions
+			.FirstOrDefaultAsync(
+				x => x.Id == transactionId,
+				cancellationToken);
+
+		if(transaction is null)
+		{
+			return false;
+		}
+
+		transaction.IsCancelled = true;
+		transaction.CancellationComment = (cancellationComment ?? string.Empty).Trim();
+		transaction.CancelledAtUtc = cancelledAtUtc;
+		transaction.CancelledByAdminUserId = cancelledByAdminUserId;
+
+		await _db.SaveChangesAsync(cancellationToken);
+		return true;
+	}
+
+	public async Task<bool> RestoreAsync(
+		Guid transactionId,
+		CancellationToken cancellationToken)
+	{
+		if(transactionId == Guid.Empty)
+		{
+			return false;
+		}
+
+		var transaction = await _db.UserPointsTransactions
+			.FirstOrDefaultAsync(
+				x => x.Id == transactionId,
+				cancellationToken);
+
+		if(transaction is null)
+		{
+			return false;
+		}
+
+		transaction.IsCancelled = false;
+		transaction.CancellationComment = string.Empty;
+		transaction.CancelledAtUtc = null;
+		transaction.CancelledByAdminUserId = null;
+
+		await _db.SaveChangesAsync(cancellationToken);
+		return true;
 	}
 }

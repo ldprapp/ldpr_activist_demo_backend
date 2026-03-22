@@ -549,7 +549,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 				}
 
-				var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, submission.TaskId, cancellationToken);
+				var accessError = await EnsureCreatorOrTrustedAccessAsync(
+					actorUserId,
+					submission.TaskId,
+					cancellationToken,
+					submission.UserId);
 				if(accessError != TaskOperationError.None)
 				{
 					return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
@@ -625,7 +629,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 					return TaskOperationResult.Fail(TaskOperationError.SubmissionNotFound);
 				}
 
-				var accessError = await EnsureCreatorOrTrustedAccessAsync(actorUserId, submission.TaskId, cancellationToken);
+				var accessError = await EnsureCreatorOrTrustedAccessAsync(
+					actorUserId,
+					submission.TaskId,
+					cancellationToken,
+					submission.UserId);
 				if(accessError != TaskOperationError.None)
 				{
 					return TaskOperationResult.Fail(accessError == TaskOperationError.Forbidden ? TaskOperationError.Forbidden : accessError);
@@ -792,45 +800,90 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetCoordinatorFeedAsync(
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetReviewerFeedAsync(
 		Guid actorUserId,
 		Guid? taskId,
 		Guid? userId,
 		string? decisionStatus,
 		CancellationToken cancellationToken)
 	{
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.TaskSubmission.Repository.GetReviewerFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.TaskSubmissions.GetReviewerFeed,
+			("ActorUserId", actorUserId),
+			("TaskId", taskId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus));
+
+		_logger.LogStarted(
+			DomainLogEvents.TaskSubmission.Repository.GetReviewerFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.TaskSubmissions.GetReviewerFeed,
+			"Task submission reviewer feed load started.",
+			("ActorUserId", actorUserId),
+			("TaskId", taskId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus));
+
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
 		if(actor is null)
 		{
-			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.InvalidCredentials);
+			var result = TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.InvalidCredentials);
+			_logger.LogRejected(
+				LogLevel.Warning,
+				DomainLogEvents.TaskSubmission.Repository.GetReviewerFeed,
+				LogLayers.PersistenceRepository,
+				PersistenceLogOperations.TaskSubmissions.GetReviewerFeed,
+				"Task submission reviewer feed load rejected.",
+				("ActorUserId", actorUserId),
+				("TaskId", taskId),
+				("UserId", userId),
+				("DecisionStatus", decisionStatus),
+				("Error", result.Error));
+			return result;
 		}
 
 		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
 		{
-			return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.Forbidden);
-		}
-
-		if(taskId.HasValue)
-		{
-			var accessError = await EnsureAdminTaskAccessAsync(actorUserId, taskId.Value, cancellationToken);
-			if(accessError != TaskOperationError.None)
-			{
-				return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(accessError);
-			}
+			var result = TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.Forbidden);
+			_logger.LogRejected(
+				LogLevel.Warning,
+				DomainLogEvents.TaskSubmission.Repository.GetReviewerFeed,
+				LogLayers.PersistenceRepository,
+				PersistenceLogOperations.TaskSubmissions.GetReviewerFeed,
+				"Task submission reviewer feed load rejected.",
+				("ActorUserId", actorUserId),
+				("TaskId", taskId),
+				("UserId", userId),
+				("DecisionStatus", decisionStatus),
+				("Error", result.Error));
+			return result;
 		}
 
 		var isAdmin = UserRoleRules.IsAdmin(actor.Role);
-
-		IQueryable<Guid> accessibleTaskIds = _db.Tasks.AsNoTracking()
-			.Where(t =>
-			   isAdmin
-			   || t.AuthorUserId == actorUserId
-			   || _db.TaskTrustedCoordinators.AsNoTracking().Any(x => x.TaskId == t.Id && x.CoordinatorUserId == actorUserId))
-		   .Where(t => t.VerificationType != TaskVerificationType.Auto)
-		   .Select(t => t.Id);
+		var accessibleTaskIds = BuildReviewerAccessibleTaskIdsQuery(actorUserId, isAdmin);
 
 		if(taskId.HasValue)
 		{
+			var accessError = await EnsureReviewerTaskAccessAsync(actorUserId, taskId.Value, cancellationToken);
+			if(accessError != TaskOperationError.None)
+			{
+				var result = TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(accessError);
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.TaskSubmission.Repository.GetReviewerFeed,
+					LogLayers.PersistenceRepository,
+					PersistenceLogOperations.TaskSubmissions.GetReviewerFeed,
+					"Task submission reviewer feed load rejected.",
+					("ActorUserId", actorUserId),
+					("TaskId", taskId),
+					("UserId", userId),
+					("DecisionStatus", decisionStatus),
+					("Error", result.Error));
+				return result;
+			}
+
 			accessibleTaskIds = accessibleTaskIds.Where(x => x == taskId.Value);
 		}
 
@@ -850,22 +903,64 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var list = await query.ToListAsync(cancellationToken);
-		return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(MapSubmissionModels(list, cancellationToken));
+		var success = TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(MapSubmissionModels(list, cancellationToken));
+
+		_logger.LogCompleted(
+			LogLevel.Debug,
+			DomainLogEvents.TaskSubmission.Repository.GetReviewerFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.TaskSubmissions.GetReviewerFeed,
+			"Task submission reviewer feed load completed.",
+			("ActorUserId", actorUserId),
+			("TaskId", taskId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus),
+			("Count", success.Value?.Count ?? 0));
+
+		return success;
 	}
 
-	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetUserFeedAsync(
+	public async Task<TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>> GetExecutorFeedAsync(
 		Guid? taskId,
 		Guid userId,
 		string? decisionStatus,
 		CancellationToken cancellationToken)
 	{
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.TaskSubmission.Repository.GetExecutorFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.TaskSubmissions.GetExecutorFeed,
+			("TaskId", taskId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus));
+
+		_logger.LogStarted(
+			DomainLogEvents.TaskSubmission.Repository.GetExecutorFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.TaskSubmissions.GetExecutorFeed,
+			"Task submission executor feed load started.",
+			("TaskId", taskId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus));
+
 		if(taskId.HasValue)
 		{
 			var taskExists = await _db.Tasks.AsNoTracking()
 				.AnyAsync(x => x.Id == taskId.Value, cancellationToken);
 			if(!taskExists)
 			{
-				return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.TaskNotFound);
+				var result = TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Fail(TaskOperationError.TaskNotFound);
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.TaskSubmission.Repository.GetExecutorFeed,
+					LogLayers.PersistenceRepository,
+					PersistenceLogOperations.TaskSubmissions.GetExecutorFeed,
+					"Task submission executor feed load rejected.",
+					("TaskId", taskId),
+					("UserId", userId),
+					("DecisionStatus", decisionStatus),
+					("Error", result.Error));
+				return result;
 			}
 		}
 
@@ -879,7 +974,71 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		}
 
 		var list = await query.ToListAsync(cancellationToken);
-		return TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(MapSubmissionModels(list, cancellationToken));
+		var success = TaskOperationResult<IReadOnlyList<TaskSubmissionModel>>.Success(MapSubmissionModels(list, cancellationToken));
+
+		_logger.LogCompleted(
+			LogLevel.Debug,
+			DomainLogEvents.TaskSubmission.Repository.GetExecutorFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.TaskSubmissions.GetExecutorFeed,
+			"Task submission executor feed load completed.",
+			("TaskId", taskId),
+			("UserId", userId),
+			("DecisionStatus", decisionStatus),
+			("Count", success.Value?.Count ?? 0));
+
+		return success;
+	}
+
+	public async Task<TaskOperationResult<IReadOnlyList<Guid>>> GetTaskIdsByUserAndDecisionStatusAsync(
+		Guid userId,
+		string decisionStatus,
+		CancellationToken cancellationToken)
+	{
+		return await ExecuteOperationAsync(
+			DomainLogEvents.TaskSubmission.Repository.GetTaskIdsByUserDecisionStatus,
+			PersistenceLogOperations.TaskSubmissions.GetTaskIdsByUserDecisionStatus,
+			async () =>
+			{
+				if(userId == Guid.Empty || string.IsNullOrWhiteSpace(decisionStatus))
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				var normalizedDecisionStatus = decisionStatus.Trim().ToLowerInvariant();
+				var isSupportedDecisionStatus =
+					string.Equals(normalizedDecisionStatus, TaskSubmissionDecisionStatus.InProgress, StringComparison.Ordinal)
+					|| string.Equals(normalizedDecisionStatus, TaskSubmissionDecisionStatus.SubmittedForReview, StringComparison.Ordinal)
+					|| string.Equals(normalizedDecisionStatus, TaskSubmissionDecisionStatus.Approve, StringComparison.Ordinal)
+					|| string.Equals(normalizedDecisionStatus, TaskSubmissionDecisionStatus.Rejected, StringComparison.Ordinal);
+
+				if(!isSupportedDecisionStatus)
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				var userExists = await _db.Users
+					.AsNoTracking()
+					.AnyAsync(x => x.Id == userId, cancellationToken);
+				if(!userExists)
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.UserNotFound);
+				}
+
+				var taskIds = await ApplyDecisionStatusFilter(
+						_db.TaskSubmissions
+							.AsNoTracking()
+							.Where(x => x.UserId == userId),
+						normalizedDecisionStatus)
+					.Select(x => x.TaskId)
+					.Distinct()
+					.ToListAsync(cancellationToken);
+
+				return TaskOperationResult<IReadOnlyList<Guid>>.Success(taskIds);
+			},
+			cancellationToken,
+			("UserId", userId),
+			("DecisionStatus", decisionStatus));
 	}
 
 	public async Task<TaskOperationResult<TaskSubmissionModel>> GetByIdAsync(
@@ -918,7 +1077,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return await MapToSubmissionModelOrAutoNotSupportedAsync(submission, cancellationToken);
 		}
 
-		var accessError = await EnsureAdminTaskAccessAsync(actorUserId, submission.TaskId, cancellationToken);
+		var accessError = await EnsureReviewerTaskAccessAsync(actorUserId, submission.TaskId, cancellationToken);
 		if(accessError != TaskOperationError.None)
 		{
 			return TaskOperationResult<TaskSubmissionModel>.Fail(accessError);
@@ -1092,7 +1251,24 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		return query.Where(_ => false);
 	}
 
-	private async Task<TaskOperationError> EnsureAdminTaskAccessAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
+	private IQueryable<Guid> BuildReviewerAccessibleTaskIdsQuery(Guid actorUserId, bool isAdmin)
+	{
+		IQueryable<TaskEntity> tasks = _db.Tasks
+			.AsNoTracking()
+			.Where(t => t.VerificationType != TaskVerificationType.Auto);
+
+		if(!isAdmin)
+		{
+			tasks = tasks.Where(t =>
+				t.AuthorUserId == actorUserId
+				|| _db.TaskTrustedCoordinators.AsNoTracking()
+					.Any(x => x.TaskId == t.Id && x.CoordinatorUserId == actorUserId));
+		}
+
+		return tasks.Select(t => t.Id);
+	}
+
+	private async Task<TaskOperationError> EnsureReviewerTaskAccessAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
 	{
 		var actor = await _db.Users.AsNoTracking()
 			.Select(x => new { x.Id, x.Role })
@@ -1108,6 +1284,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			return TaskOperationError.TaskNotFound;
 		}
 
+		if(!UserRoleRules.HasCoordinatorAccess(actor.Role))
+		{
+			return TaskOperationError.Forbidden;
+		}
+
 		if(UserRoleRules.IsAdmin(actor.Role))
 		{
 			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
@@ -1121,6 +1302,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				? TaskOperationError.TaskAutoVerificationNotSupported
 				: TaskOperationError.None;
 		}
+
 		var isTrustedCoordinator = await _db.TaskTrustedCoordinators.AsNoTracking()
 			.AnyAsync(x => x.TaskId == taskId && x.CoordinatorUserId == actorUserId, cancellationToken);
 		if(!isTrustedCoordinator)
@@ -1134,6 +1316,19 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 	}
 
 	private async Task<TaskOperationError> EnsureCreatorOrTrustedAccessAsync(Guid actorUserId, Guid taskId, CancellationToken cancellationToken)
+	{
+		return await EnsureCreatorOrTrustedAccessAsync(
+			actorUserId,
+			taskId,
+			cancellationToken,
+			submissionUserId: null);
+	}
+
+	private async Task<TaskOperationError> EnsureCreatorOrTrustedAccessAsync(
+		Guid actorUserId,
+		Guid taskId,
+		CancellationToken cancellationToken,
+		Guid? submissionUserId)
 	{
 		var actor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == actorUserId, cancellationToken);
 		if(actor is null)
@@ -1149,6 +1344,11 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 		if(UserRoleRules.IsAdmin(actor.Role))
 		{
+			if(submissionUserId.HasValue && submissionUserId.Value == actorUserId)
+			{
+				return TaskOperationError.TaskAccessDenied;
+			}
+
 			return string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal)
 				? TaskOperationError.TaskAutoVerificationNotSupported
 				: TaskOperationError.None;

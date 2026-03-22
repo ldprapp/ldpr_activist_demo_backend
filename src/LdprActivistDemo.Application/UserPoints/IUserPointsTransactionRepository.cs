@@ -19,4 +19,15 @@ public interface IUserPointsTransactionRepository
 		Guid? coordinatorUserId,
 		Guid? taskId,
 		CancellationToken cancellationToken);
+
+	Task<bool> CancelAsync(
+		Guid transactionId,
+		string cancellationComment,
+		Guid cancelledByAdminUserId,
+		DateTimeOffset cancelledAtUtc,
+		CancellationToken cancellationToken);
+
+	Task<bool> RestoreAsync(
+		Guid transactionId,
+		CancellationToken cancellationToken);
 }

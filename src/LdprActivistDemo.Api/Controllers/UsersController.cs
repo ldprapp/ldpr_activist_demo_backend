@@ -841,10 +841,12 @@ public sealed class UsersController : ControllerBase
 	/// Возвращает ленту пользователей с фильтрацией и опциональной пагинацией.
 	/// </summary>
 	/// <remarks>
-	/// Поддерживается фильтрация по роли и географии. Формат ответа задаётся параметром
+	/// Поддерживается фильтрация по роли и географии. При значении <c>role=coordinator</c>
+	/// возвращаются пользователи с ролями <c>coordinator</c> и <c>admin</c> одновременно.
+	/// Запрос <c>role=admin</c> не поддерживается. Формат ответа задаётся параметром
 	/// <c>responseFormat</c>: список пользователей или только количество.
 	/// </remarks>
-	/// <param name="role">Опциональный фильтр по роли: <c>activist</c>, <c>coordinator</c> или <c>admin</c>.</param>
+	/// <param name="role">Опциональный фильтр по роли: <c>activist</c>, <c>coordinator</c> или <c>banned</c>. При <c>coordinator</c> в результат также включаются <c>admin</c>.</param>
 	/// <param name="regionName">Опциональный фильтр по региону.</param>
 	/// <param name="settlementName">Опциональный фильтр по населённому пункту. Допустим только вместе с <c>regionName</c>.</param>
 	/// <param name="responseFormat">Формат ответа: список пользователей или только количество.</param>
@@ -890,7 +892,7 @@ public sealed class UsersController : ControllerBase
 			_ => UserResponseFormat.Users,
 		};
 
-		UserRoleRules.TryNormalizeOptionalRole(role, out var normalizedRole, out _);
+		UserRoleRules.TryNormalizeUserFeedRole(role, out var normalizedRole, out _);
 
 		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
@@ -1070,7 +1072,7 @@ public sealed class UsersController : ControllerBase
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-		if(!UserRoleRules.TryNormalizeOptionalRole(role, out _, out var roleError))
+		if(!UserRoleRules.TryNormalizeUserFeedRole(role, out _, out var roleError))
 		{
 			errors["role"] = new[] { roleError! };
 		}
@@ -1101,7 +1103,7 @@ public sealed class UsersController : ControllerBase
 		}
 
 		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail:
-				$"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}', '{UserRoles.Admin}' или '{UserRoles.Banned}', settlementName допускается только вместе с regionName.");
+				$"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Banned}' (при '{UserRoles.Coordinator}' в результат также включаются пользователи с ролью '{UserRoles.Admin}'), settlementName допускается только вместе с regionName.");
 	}
 
 	private ActionResult? TryBuildUsersPaginationValidationProblem(int? start, int? end)
