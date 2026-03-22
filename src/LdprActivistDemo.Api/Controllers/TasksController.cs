@@ -56,6 +56,16 @@ public sealed class TasksController : ControllerBase
 		Count = 1,
 	}
 
+	public enum TaskUsersFeedStatusFilter
+	{
+		NoneSubmit = 0,
+		All = 1,
+		InProgress = 2,
+		SubmittedForReview = 3,
+		Approve = 4,
+		Rejected = 5,
+	}
+
 	public enum SubmissionFeedSort
 	{
 		NewestFirst = 1,
@@ -619,21 +629,6 @@ public sealed class TasksController : ControllerBase
 					: TaskOperationError.InvalidCredentials);
 		}
 
-		var invalidPagination = TryBuildFeedPaginationValidationProblem(start, end);
-		if(invalidPagination is not null)
-		{
-			return invalidPagination;
-		}
-
-		var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword!, cancellationToken);
-		if(!actorAuth.IsSuccess)
-		{
-			return MapTaskError(
-				actorAuth.Error == ActorAuthenticationError.ValidationFailed
-					? TaskOperationError.ValidationFailed
-					: TaskOperationError.InvalidCredentials);
-		}
-
 		var actorHasCoordinatorAccess = UserRoleRules.HasCoordinatorAccess(actorAuth.Actor!.Role);
 
 		var invalidUserScope = TryBuildTaskFeedUserScopeValidationProblem(
@@ -734,20 +729,11 @@ public sealed class TasksController : ControllerBase
 			}
 
 			var userScopedNowUtc = DateTimeOffset.UtcNow;
-			var userScopedOrderedTasks = ApplyDeadlineVisibilityAndSorting(userScopedTasks, sort, includeExpiredDeadlines, userScopedNowUtc);
-
-			cancellationToken.ThrowIfCancellationRequested();
-
-			var userDtos = userScopedOrderedTasks.Select(ToDto).ToList();
-			return Ok(ApplyFeedPagination(userDtos, start, end));
-		}
-
-				var userSubmissionTaskIds = userSubmissionTaskIdsResult.Value.ToHashSet();
-				userScopedTasks = userScopedTasks.Where(t => userSubmissionTaskIds.Contains(t.Id));
-			}
-
-			var userScopedNowUtc = DateTimeOffset.UtcNow;
-			var userScopedOrderedTasks = ApplyDeadlineVisibilityAndSorting(userScopedTasks, sort, includeExpiredDeadlines, userScopedNowUtc);
+			var userScopedOrderedTasks = ApplyDeadlineVisibilityAndSorting(
+				userScopedTasks,
+				sort,
+				includeExpiredDeadlines,
+				userScopedNowUtc);
 
 			cancellationToken.ThrowIfCancellationRequested();
 
@@ -776,10 +762,10 @@ public sealed class TasksController : ControllerBase
 			{
 				cancellationToken.ThrowIfCancellationRequested();
 
-				var r = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
-				if(r.IsSuccess && r.Value is not null)
+				var result = await _tasks.GetPublicAsync(taskIds[i], cancellationToken);
+				if(result.IsSuccess && result.Value is not null)
 				{
-					list.Add(r.Value);
+					list.Add(result.Value);
 				}
 			}
 
@@ -1291,25 +1277,88 @@ public sealed class TasksController : ControllerBase
 	}
 
 	/// <summary>
-	/// Возвращает пользователей, связанных с задачей, либо количество таких пользователей.
+	/// Возвращает пользователей, релевантных для задачи, либо количество таких пользователей.
 	/// </summary>
 	/// <remarks>
-	/// Если <c>taskStatus</c> не указан, возвращаются пользователи подходящей географии,
-	/// которые ещё не создали заявку по задаче. Если указан статус, выбираются пользователи
-	/// по состоянию их заявок. Формат ответа задаётся параметром <c>responseFormat</c>.
+	/// Эндпоинт доступен только автору задачи, назначенному ответственному координатору этой задачи
+	/// или любому администратору.
+	/// Координатор, который не является ни автором, ни назначенным ответственным по задаче,
+	/// получает <c>403 Forbidden</c>.
+	/// Пользователь с ролью <c>activist</c> также получает <c>403 Forbidden</c>.
+	///
+	/// Формат ответа задаётся параметром <c>responseFormat</c>.
+	///
+	/// Из любой выборки всегда исключаются пользователи, которые в принципе не могут быть исполнителями
+	/// этой задачи и не должны влиять на статистику:
+	/// автор задачи и все назначенные ответственные координаторы задачи.
+	/// Это исключение применяется и к списку пользователей, и к режиму <c>count</c>,
+	/// и ко всем вариантам фильтра <c>taskStatus</c>.
+	///
+	/// Если <c>taskStatus</c> не указан, используется поведение,
+	/// эквивалентное <c>NoneSubmit</c>:
+	/// возвращаются пользователи подходящей географии, которые ещё не создали ни одной заявки по задаче,
+	/// за вычетом автора задачи и назначенных ответственных координаторов.
+	///
+	/// Режим <c>NoneSubmit</c> делает это поведение явным.
+	/// Режим <c>All</c> возвращает всех пользователей подходящей географии,
+	/// которые могут быть исполнителями задачи, независимо от наличия заявок.
+	///
+	/// Для режимов со статусами заявок
+	/// (<c>InProgress</c>, <c>SubmittedForReview</c>, <c>Rejected</c>, <c>Approve</c>)
+	/// используется взаимоисключающая классификация пользователя по всем его заявкам к этой задаче.
+	/// Пользователь попадает ровно в одну итоговую категорию по максимальному приоритету статуса:
+	/// <c>NoneSubmit</c> &lt; <c>InProgress</c> &lt; <c>SubmittedForReview</c> &lt; <c>Rejected</c> &lt; <c>Approve</c>.
+	/// Это означает:
+	/// <list type="bullet">
+	/// <item>
+	/// <description><c>InProgress</c> — у пользователя есть хотя бы одна заявка, и все его заявки по задаче находятся строго в статусе <c>in_progress</c>.</description>
+	/// </item>
+	/// <item>
+	/// <description><c>SubmittedForReview</c> — у пользователя есть хотя бы одна заявка в статусе <c>submitted_for_review</c>, при этом заявок в статусах <c>rejected</c> или <c>approve</c> нет.</description>
+	/// </item>
+	/// <item>
+	/// <description><c>Rejected</c> — у пользователя есть хотя бы одна заявка в статусе <c>rejected</c>, при этом заявок в статусе <c>approve</c> нет.</description>
+	/// </item>
+	/// <item>
+	/// <description><c>Approve</c> — у пользователя есть хотя бы одна заявка в статусе <c>approve</c>, независимо от остальных заявок.</description>
+	/// </item>
+	/// </list>
+	/// Автор задачи и назначенные ответственные координаторы всё равно исключаются из результата,
+	/// даже если по историческим данным у них есть связанные записи.
+	///
+	/// Параметр <c>taskStatus</c> привязывается как enum <see cref="TaskUsersFeedStatusFilter"/>.
+	/// Поэтому контрактные значения соответствуют именам enum:
+	/// <c>NoneSubmit</c>, <c>All</c>, <c>InProgress</c>, <c>SubmittedForReview</c>, <c>Approve</c>, <c>Rejected</c>.
+	/// Так как ASP.NET Core выполняет case-insensitive enum binding, клиент может безопасно отправлять
+	/// camelCase-варианты: <c>noneSubmit</c>, <c>all</c>, <c>inProgress</c>, <c>submittedForReview</c>, <c>approve</c>, <c>rejected</c>.
+	/// Старые snake_case-варианты вроде <c>none_submit</c>, <c>in_progress</c> и <c>submitted_for_review</c>
+	/// не являются контрактными значениями этого endpoint.
 	/// </remarks>
 	/// <param name="taskId">Идентификатор задачи.</param>
 	/// <param name="actorUserId">Идентификатор пользователя, запрашивающего данные.</param>
 	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
-	/// <param name="taskStatus">Опциональный фильтр по состоянию заявки: <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.</param>
-	/// <param name="responseFormat">Формат ответа: список пользователей или только количество.</param>
+	/// <param name="taskStatus">
+	/// Опциональный фильтр режима выборки.
+	/// Контрактные значения: <c>NoneSubmit</c>, <c>All</c>, <c>InProgress</c>, <c>SubmittedForReview</c>, <c>Approve</c> или <c>Rejected</c>.
+	/// На практике клиенту рекомендуется передавать camelCase-варианты:
+	/// <c>noneSubmit</c>, <c>all</c>, <c>inProgress</c>, <c>submittedForReview</c>, <c>approve</c> или <c>rejected</c>.
+	/// Если параметр не указан, используется поведение, эквивалентное <c>NoneSubmit</c>.
+	/// Категории взаимоисключающие и вычисляются по максимальному приоритету статуса среди всех заявок пользователя по данной задаче.
+	/// </param>
+	/// <param name="responseFormat">
+	/// Формат ответа. Контрактные значения enum: <c>Users</c> или <c>Count</c>.
+	/// Из клиента также допустимы <c>users</c> и <c>count</c> благодаря case-insensitive enum binding.
+	/// </param>
 	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
 	/// <response code="200">Информация о пользователях успешно возвращена.</response>
 	/// <response code="400">Переданы некорректные параметры фильтрации или пагинации.</response>
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
-	/// <response code="403">Пользователь не имеет доступа к задаче.</response>
+	/// <response code="403">
+	/// Пользователь не имеет доступа к статистике задачи:
+	/// требуется автор задачи, назначенный ответственный координатор задачи или любой администратор.
+	/// </response>
 	/// <response code="404">Задача не найдена.</response>
 	[HttpGet("{taskId:guid}/feed/users")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
@@ -1322,7 +1371,7 @@ public sealed class TasksController : ControllerBase
 		[FromRoute] Guid taskId,
 		[FromQuery] Guid actorUserId,
 		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword,
-		[FromQuery] string? taskStatus = null,
+		[FromQuery] TaskUsersFeedStatusFilter? taskStatus = null,
 		[FromQuery] TaskUsersResponseFormat responseFormat = TaskUsersResponseFormat.Users,
 		[FromQuery] int? start = null,
 		[FromQuery] int? end = null,
@@ -1352,7 +1401,7 @@ public sealed class TasksController : ControllerBase
 				detail: "Передайте корректный taskId.");
 		}
 
-		if(!TryNormalizeSubmissionDecisionStatusFilter(taskStatus, out var normalizedTaskStatus, out var taskStatusError))
+		if(!TryNormalizeTaskUsersFeedStatusFilter(taskStatus, out var normalizedTaskStatus, out var taskStatusError))
 		{
 			return this.ValidationProblemWithCode(
 				ApiErrorCodes.ValidationFailed,
@@ -1361,7 +1410,7 @@ public sealed class TasksController : ControllerBase
 					["taskStatus"] = new[] { taskStatusError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр taskStatus допускает только значения 'in_progress', 'submitted_for_review', 'approve' или 'rejected'. Пустое значение включает режим поиска пользователей без заявки к задаче по географии задачи.");
+				detail: "Параметр taskStatus привязывается как enum TaskUsersFeedStatusFilter и допускает значения 'NoneSubmit', 'All', 'InProgress', 'SubmittedForReview', 'Approve' или 'Rejected'. Из клиента рекомендуется передавать camelCase-варианты 'noneSubmit', 'all', 'inProgress', 'submittedForReview', 'approve' и 'rejected'. Пустое значение сохраняет прежнее поведение и эквивалентно 'NoneSubmit'.");
 		}
 
 		var normalizedResponseFormat = responseFormat switch
@@ -1922,6 +1971,50 @@ public sealed class TasksController : ControllerBase
 		return false;
 	}
 
+	private static bool TryNormalizeTaskUsersFeedStatusFilter(
+		TaskUsersFeedStatusFilter? raw,
+		out string? normalized,
+		out string? error)
+	{
+		error = null;
+		normalized = null;
+
+		if(!raw.HasValue)
+		{
+			return true;
+		}
+
+		switch(raw.Value)
+		{
+			case TaskUsersFeedStatusFilter.NoneSubmit:
+				normalized = TaskUsersFeedStatus.NoneSubmit;
+				return true;
+
+			case TaskUsersFeedStatusFilter.All:
+				normalized = TaskUsersFeedStatus.All;
+				return true;
+
+			case TaskUsersFeedStatusFilter.InProgress:
+				normalized = TaskSubmissionDecisionStatus.InProgress;
+				return true;
+
+			case TaskUsersFeedStatusFilter.SubmittedForReview:
+				normalized = TaskSubmissionDecisionStatus.SubmittedForReview;
+				return true;
+
+			case TaskUsersFeedStatusFilter.Approve:
+				normalized = TaskSubmissionDecisionStatus.Approve;
+				return true;
+
+			case TaskUsersFeedStatusFilter.Rejected:
+				normalized = TaskSubmissionDecisionStatus.Rejected;
+				return true;
+		}
+
+		error = "TaskStatus must be 'NoneSubmit', 'All', 'InProgress', 'SubmittedForReview', 'Approve' or 'Rejected'. CamelCase client values 'noneSubmit', 'all', 'inProgress', 'submittedForReview', 'approve' and 'rejected' are also valid. The value may be empty.";
+		return false;
+	}
+
 	private static bool TryNormalizeTaskVerificationTypeForCreate(string? raw, out string normalized, out string? error)
 	{
 		error = null;
@@ -2211,7 +2304,11 @@ public sealed class TasksController : ControllerBase
 		{
 			TaskOperationError.ValidationFailed => this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.ValidationFailed, "Некорректный запрос.", "Проверьте тело запроса и параметры."),
 			TaskOperationError.InvalidCredentials => this.ProblemWithCode(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidCredentials, "Неверные учётные данные.", $"Проверьте id пользователя и заголовок {ActorPasswordHeader}."),
-			TaskOperationError.Forbidden => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.Forbidden, "Нет доступа.", "Операция запрещена: требуется автор задачи или назначенный ответственный координатор/администратор."),
+			TaskOperationError.Forbidden => this.ProblemWithCode(
+				StatusCodes.Status403Forbidden,
+				ApiErrorCodes.Forbidden,
+				"Нет доступа.",
+				"Операция запрещена: требуется автор задачи, назначенный ответственный координатор задачи или любой администратор."),
 			TaskOperationError.TaskAccessDenied => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.TaskAccessDenied, "Нет доступа.", "Задача недоступна пользователю или операция запрещена для текущей роли."),
 			TaskOperationError.TaskNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskNotFound, "Задача не найдена."),
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),

@@ -465,7 +465,7 @@ public sealed class TaskService : ITaskService
 		Guid actorUserId,
 		string actorUserPassword,
 		Guid taskId,
-		string? decisionStatus,
+		string? taskStatus,
 		CancellationToken cancellationToken)
 	{
 		return await ExecuteAsync(
@@ -480,11 +480,11 @@ public sealed class TaskService : ITaskService
 
 				var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
 				return authError is null
-					? await _submissions.GetTaskUsersAsync(actorUserId, taskId, decisionStatus, cancellationToken)
+					? await _submissions.GetTaskUsersAsync(actorUserId, taskId, taskStatus, cancellationToken)
 					: TaskOperationResult<IReadOnlyList<UserPublicModel>>.Fail(authError.Value);
 			},
 			cancellationToken,
-			("ActorUserId", actorUserId), ("TaskId", taskId), ("DecisionStatus", decisionStatus));
+			("ActorUserId", actorUserId), ("TaskId", taskId), ("TaskStatus", taskStatus));
 	}
 
 	private async Task<TaskOperationError?> TryAuthenticateActorAsync(

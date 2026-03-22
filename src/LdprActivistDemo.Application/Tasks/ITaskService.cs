@@ -47,6 +47,6 @@ public interface ITaskService
 		Guid actorUserId,
 		string actorUserPassword,
 		Guid taskId,
-		string? decisionStatus,
+		string? taskStatus,
 		CancellationToken cancellationToken);
 }
