@@ -654,32 +654,39 @@ public sealed class UserService : IUserService
 		string? role,
 		string? regionName,
 		string? settlementName,
+		string? search,
 		CancellationToken cancellationToken)
 		=> ExecuteReadAsync(
 			DomainLogEvents.User.GetUsers,
 			ApplicationLogOperations.Users.GetUsers,
 			async () =>
 			{
+				IReadOnlyList<UserPublicModel> users;
+
 				if(string.Equals(role, UserRoles.Coordinator, StringComparison.Ordinal))
 				{
-					var users = await _users.GetByFiltersAsync(
+					users = await _users.GetByFiltersAsync(
 						role: null,
 						regionName,
 						settlementName,
 						cancellationToken);
 
-					return users
+					users = users
 						.Where(x =>
 							string.Equals(x.Role, UserRoles.Coordinator, StringComparison.OrdinalIgnoreCase)
 							|| string.Equals(x.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
 						.ToList();
 				}
+				else
+				{
+					users = await _users.GetByFiltersAsync(
+						role,
+						regionName,
+						settlementName,
+						cancellationToken);
+				}
 
-				return await _users.GetByFiltersAsync(
-					role,
-					regionName,
-					settlementName,
-					cancellationToken);
+				return ApplyUsersSearch(users, search);
 			},
 			cancellationToken,
 			result => new (string Name, object? Value)[]
@@ -688,7 +695,8 @@ public sealed class UserService : IUserService
 			},
 			("Role", role),
 			("RegionName", regionName),
-			("SettlementName", settlementName));
+			("SettlementName", settlementName),
+			("Search", NormalizeUserSearchText(search)));
 
 	public Task<string?> GetRoleAsync(Guid userId, CancellationToken cancellationToken)
 		=> ExecuteReadAsync(
@@ -1008,6 +1016,200 @@ public sealed class UserService : IUserService
 				properties);
 			throw;
 		}
+	}
+
+	private static IReadOnlyList<UserPublicModel> ApplyUsersSearch(
+		IReadOnlyList<UserPublicModel> users,
+		string? search)
+	{
+		var normalizedSearch = NormalizeUserSearchText(search);
+		if(normalizedSearch is null)
+		{
+			return users;
+		}
+
+		var searchTokens = SplitNormalizedSearchTokens(normalizedSearch);
+		if(searchTokens.Length == 0)
+		{
+			return users;
+		}
+
+		return users
+			.Where(x => IsUserMatchedBySearch(x, normalizedSearch, searchTokens))
+			.ToList();
+	}
+
+	private static bool IsUserMatchedBySearch(
+		UserPublicModel user,
+		string normalizedSearch,
+		IReadOnlyList<string> searchTokens)
+	{
+		var fullName = BuildNormalizedUserFullName(user);
+		if(fullName.Length == 0)
+		{
+			return false;
+		}
+
+		if(fullName.Contains(normalizedSearch, StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		var nameTokens = SplitNormalizedSearchTokens(fullName);
+		if(nameTokens.Length == 0)
+		{
+			return false;
+		}
+
+		for(var i = 0; i < searchTokens.Count; i++)
+		{
+			var searchToken = searchTokens[i];
+			var matched = false;
+
+			for(var j = 0; j < nameTokens.Length; j++)
+			{
+				if(IsFuzzyNameTokenMatch(nameTokens[j], searchToken))
+				{
+					matched = true;
+					break;
+				}
+			}
+
+			if(!matched)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool IsFuzzyNameTokenMatch(string nameToken, string searchToken)
+	{
+		if(nameToken.Length == 0 || searchToken.Length == 0)
+		{
+			return false;
+		}
+
+		if(nameToken.Contains(searchToken, StringComparison.Ordinal)
+		   || searchToken.Contains(nameToken, StringComparison.Ordinal))
+		{
+			return true;
+		}
+
+		var maxDistance = ResolveAllowedNameDistance(nameToken, searchToken);
+		if(maxDistance <= 0)
+		{
+			return false;
+		}
+
+		return GetBoundedLevenshteinDistance(nameToken, searchToken, maxDistance) <= maxDistance;
+	}
+
+	private static int ResolveAllowedNameDistance(string left, string right)
+	{
+		var minLength = Math.Min(left.Length, right.Length);
+		if(minLength <= 2)
+		{
+			return 0;
+		}
+
+		return minLength <= 8 ? 1 : 2;
+	}
+
+	private static int GetBoundedLevenshteinDistance(string left, string right, int maxDistance)
+	{
+		if(Math.Abs(left.Length - right.Length) > maxDistance)
+		{
+			return maxDistance + 1;
+		}
+
+		if(left.Length == 0)
+		{
+			return right.Length;
+		}
+
+		if(right.Length == 0)
+		{
+			return left.Length;
+		}
+
+		var previous = new int[right.Length + 1];
+		var current = new int[right.Length + 1];
+
+		for(var j = 0; j <= right.Length; j++)
+		{
+			previous[j] = j;
+		}
+
+		for(var i = 1; i <= left.Length; i++)
+		{
+			current[0] = i;
+			var rowMinimum = current[0];
+
+			for(var j = 1; j <= right.Length; j++)
+			{
+				var cost = left[i - 1] == right[j - 1] ? 0 : 1;
+
+				current[j] = Math.Min(
+					Math.Min(
+						current[j - 1] + 1,
+						previous[j] + 1),
+					previous[j - 1] + cost);
+
+				if(current[j] < rowMinimum)
+				{
+					rowMinimum = current[j];
+				}
+			}
+
+			if(rowMinimum > maxDistance)
+			{
+				return maxDistance + 1;
+			}
+
+			(previous, current) = (current, previous);
+		}
+
+		return previous[right.Length];
+	}
+
+	private static string BuildNormalizedUserFullName(UserPublicModel user)
+	{
+		return NormalizeUserSearchText(
+				   string.Join(
+					   ' ',
+					   new[]
+					   {
+						   user.LastName,
+						   user.FirstName,
+						   user.MiddleName ?? string.Empty,
+					   }))
+			   ?? string.Empty;
+	}
+
+	private static string[] SplitNormalizedSearchTokens(string value)
+	{
+		return value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+	}
+
+	private static string? NormalizeUserSearchText(string? value)
+	{
+		if(string.IsNullOrWhiteSpace(value))
+		{
+			return null;
+		}
+
+		var whitespace = new[] { ' ', '\t', '\r', '\n' };
+
+		return string.Join(
+			' ',
+			value
+				.Trim()
+				.Replace('Ё', 'Е')
+				.Replace('ё', 'е')
+				.ToLowerInvariant()
+				.Split(whitespace, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 	}
 
 	private async Task<T> ExecuteReadAsync<T>(

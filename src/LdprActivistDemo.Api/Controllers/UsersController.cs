@@ -841,14 +841,17 @@ public sealed class UsersController : ControllerBase
 	/// Возвращает ленту пользователей с фильтрацией и опциональной пагинацией.
 	/// </summary>
 	/// <remarks>
-	/// Поддерживается фильтрация по роли и географии. При значении <c>role=coordinator</c>
-	/// возвращаются пользователи с ролями <c>coordinator</c> и <c>admin</c> одновременно.
-	/// Запрос <c>role=admin</c> не поддерживается. Формат ответа задаётся параметром
-	/// <c>responseFormat</c>: список пользователей или только количество.
+	/// Поддерживается фильтрация по роли, географии и поиску по ФИО. При значении
+	/// <c>role=coordinator</c> возвращаются пользователи с ролями <c>coordinator</c>
+	/// и <c>admin</c> одновременно. Запрос <c>role=admin</c> не поддерживается.
+	/// Поиск по параметру <c>search</c> применяется после остальных фильтров.
+	/// Формат ответа задаётся параметром <c>responseFormat</c>: список пользователей
+	/// или только количество.
 	/// </remarks>
 	/// <param name="role">Опциональный фильтр по роли: <c>activist</c>, <c>coordinator</c> или <c>banned</c>. При <c>coordinator</c> в результат также включаются <c>admin</c>.</param>
 	/// <param name="regionName">Опциональный фильтр по региону.</param>
 	/// <param name="settlementName">Опциональный фильтр по населённому пункту. Допустим только вместе с <c>regionName</c>.</param>
+	/// <param name="search">Опциональная строка поиска по ФИО. Поиск нечувствителен к регистру, лишним пробелам и допускает небольшие опечатки.</param>
 	/// <param name="responseFormat">Формат ответа: список пользователей или только количество.</param>
 	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
@@ -863,6 +866,7 @@ public sealed class UsersController : ControllerBase
 		[FromQuery] string? role,
 		[FromQuery] string? regionName,
 		[FromQuery] string? settlementName,
+		[FromQuery] string? search,
 		[FromQuery] UserFeedResponseFormat responseFormat = UserFeedResponseFormat.Users,
 		[FromQuery] int? start = null,
 		[FromQuery] int? end = null,
@@ -874,7 +878,7 @@ public sealed class UsersController : ControllerBase
 			return invalid;
 		}
 
-		var invalidFilters = TryBuildUsersFeedFilterValidationProblem(role, regionName, settlementName);
+		var invalidFilters = TryBuildUsersFeedFilterValidationProblem(role, regionName, settlementName, search);
 		if(invalidFilters is not null)
 		{
 			return invalidFilters;
@@ -894,7 +898,7 @@ public sealed class UsersController : ControllerBase
 
 		UserRoleRules.TryNormalizeUserFeedRole(role, out var normalizedRole, out _);
 
-		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, cancellationToken);
+		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, search, cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
 
 		if(string.Equals(normalizedResponseFormat, UserResponseFormat.Count, StringComparison.Ordinal))
@@ -1068,7 +1072,11 @@ public sealed class UsersController : ControllerBase
 		AvatarImageUrl = u.AvatarImageUrl,
 	};
 
-	private ActionResult? TryBuildUsersFeedFilterValidationProblem(string? role, string? regionName, string? settlementName)
+	private ActionResult? TryBuildUsersFeedFilterValidationProblem(
+		string? role,
+		string? regionName,
+		string? settlementName,
+		string? search)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
@@ -1102,8 +1110,17 @@ public sealed class UsersController : ControllerBase
 			}
 		}
 
+		if(search is not null && string.IsNullOrWhiteSpace(search))
+		{
+			errors["search"] = new[] { "Search must not be empty." };
+		}
+
 		return errors.Count == 0 ? null : this.ValidationProblemWithCode(ApiErrorCodes.ValidationFailed, errors, title: "Некорректный запрос.", detail:
-				$"Проверьте параметры role/regionName/settlementName. role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Banned}' (при '{UserRoles.Coordinator}' в результат также включаются пользователи с ролью '{UserRoles.Admin}'), settlementName допускается только вместе с regionName.");
+				$"Проверьте параметры role/regionName/settlementName/search. " +
+				$"role допускает только '{UserRoles.Activist}', '{UserRoles.Coordinator}' или '{UserRoles.Banned}' " +
+				$"(при '{UserRoles.Coordinator}' в результат также включаются пользователи с ролью '{UserRoles.Admin}'), " +
+				$"settlementName допускается только вместе с regionName, " +
+				$"search допускается только как непустая строка.");
 	}
 
 	private ActionResult? TryBuildUsersPaginationValidationProblem(int? start, int? end)
