@@ -445,6 +445,34 @@ public sealed class TaskService : ITaskService
 			("DecisionStatus", decisionStatus));
 	}
 
+	public async Task<TaskOperationResult<IReadOnlyList<Guid>>> GetTaskIdsWithAnySubmissionByUserAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		return await ExecuteAsync(
+			DomainLogEvents.TaskSubmission.GetTaskIdsWithAnySubmissionByUser,
+			ApplicationLogOperations.Tasks.GetTaskIdsWithAnySubmissionByUser,
+			async () =>
+			{
+				if(userId == Guid.Empty)
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
+				return authError is null
+					? await _submissions.GetTaskIdsWithAnySubmissionByUserAsync(
+						userId,
+						cancellationToken)
+					: TaskOperationResult<IReadOnlyList<Guid>>.Fail(authError.Value);
+			},
+			cancellationToken,
+			("ActorUserId", actorUserId),
+			("UserId", userId));
+	}
+
 	public async Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken)
 	{
 		return await ExecuteAsync(

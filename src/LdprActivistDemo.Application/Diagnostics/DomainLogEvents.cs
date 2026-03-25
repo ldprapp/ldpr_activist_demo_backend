@@ -230,6 +230,7 @@ public static class DomainLogEvents
 			public const string GetReviewerFeed = "tasks.submission.service.feed.reviewer";
 			public const string GetExecutorFeed = "tasks.submission.service.feed.executor";
 			public const string GetTaskIdsByUserDecisionStatus = "tasks.submission.service.task_ids_by_user_decision_status.get";
+			public const string GetTaskIdsWithAnySubmissionByUser = "tasks.submission.service.task_ids_with_any_submission_by_user.get";
 			public const string GetById = "tasks.submission.service.get";
 			public const string GetTaskUsers = "tasks.submission.service.users.get";
 		}
@@ -248,6 +249,7 @@ public static class DomainLogEvents
 			public const string GetReviewerFeed = "tasks.submission.repository.feed.reviewer";
 			public const string GetExecutorFeed = "tasks.submission.repository.feed.executor";
 			public const string GetTaskIdsByUserDecisionStatus = "tasks.submission.repository.task_ids_by_user_decision_status.get";
+			public const string GetTaskIdsWithAnySubmissionByUser = "tasks.submission.repository.task_ids_with_any_submission_by_user.get";
 			public const string GetById = "tasks.submission.repository.get";
 			public const string GetTaskUsers = "tasks.submission.repository.users.get";
 		}
@@ -264,6 +266,7 @@ public static class DomainLogEvents
 		public const string GetReviewerFeed = Service.GetReviewerFeed;
 		public const string GetExecutorFeed = Service.GetExecutorFeed;
 		public const string GetTaskIdsByUserDecisionStatus = Service.GetTaskIdsByUserDecisionStatus;
+		public const string GetTaskIdsWithAnySubmissionByUser = Service.GetTaskIdsWithAnySubmissionByUser;
 		public const string GetById = Service.GetById;
 		public const string GetTaskUsers = Service.GetTaskUsers;
 	}

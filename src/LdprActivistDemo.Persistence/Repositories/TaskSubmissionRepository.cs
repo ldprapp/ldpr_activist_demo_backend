@@ -1042,6 +1042,41 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 			("DecisionStatus", decisionStatus));
 	}
 
+	public async Task<TaskOperationResult<IReadOnlyList<Guid>>> GetTaskIdsWithAnySubmissionByUserAsync(
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		return await ExecuteOperationAsync(
+			DomainLogEvents.TaskSubmission.Repository.GetTaskIdsWithAnySubmissionByUser,
+			PersistenceLogOperations.TaskSubmissions.GetTaskIdsWithAnySubmissionByUser,
+			async () =>
+			{
+				if(userId == Guid.Empty)
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				var userExists = await _db.Users
+					.AsNoTracking()
+					.AnyAsync(x => x.Id == userId, cancellationToken);
+				if(!userExists)
+				{
+					return TaskOperationResult<IReadOnlyList<Guid>>.Fail(TaskOperationError.UserNotFound);
+				}
+
+				var taskIds = await _db.TaskSubmissions
+					.AsNoTracking()
+					.Where(x => x.UserId == userId)
+					.Select(x => x.TaskId)
+					.Distinct()
+					.ToListAsync(cancellationToken);
+
+				return TaskOperationResult<IReadOnlyList<Guid>>.Success(taskIds);
+			},
+			cancellationToken,
+			("UserId", userId));
+	}
+
 	public async Task<TaskOperationResult<TaskSubmissionModel>> GetByIdAsync(
 		Guid actorUserId,
 		Guid submissionId,

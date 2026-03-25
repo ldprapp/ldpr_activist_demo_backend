@@ -75,6 +75,7 @@ public static class ApplicationLogOperations
 		public const string GetSubmissionReviewerFeed = "tasks.submission.feed.reviewer";
 		public const string GetSubmissionExecutorFeed = "tasks.submission.feed.executor";
 		public const string GetTaskIdsByUserSubmissionStatus = "tasks.submission.task_ids_by_user_status.get";
+		public const string GetTaskIdsWithAnySubmissionByUser = "tasks.submission.task_ids_with_any_submission_by_user.get";
 		public const string GetSubmissionById = "tasks.submission.get";
 		public const string GetTaskUsers = "tasks.users.get";
 	}

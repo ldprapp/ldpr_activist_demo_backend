@@ -42,6 +42,11 @@ public interface ITaskService
 		Guid userId,
 		string decisionStatus,
 		CancellationToken cancellationToken);
+	Task<TaskOperationResult<IReadOnlyList<Guid>>> GetTaskIdsWithAnySubmissionByUserAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken);
 	Task<TaskOperationResult<TaskSubmissionModel>> GetSubmissionByIdAsync(Guid actorUserId, string actorUserPassword, Guid submissionId, CancellationToken cancellationToken);
 	Task<TaskOperationResult<IReadOnlyList<UserPublicModel>>> GetTaskUsersAsync(
 		Guid actorUserId,

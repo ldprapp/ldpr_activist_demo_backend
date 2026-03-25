@@ -85,6 +85,7 @@ public static class PersistenceLogOperations
 		public const string GetReviewerFeed = "tasks.submission.feed.reviewer";
 		public const string GetExecutorFeed = "tasks.submission.feed.executor";
 		public const string GetTaskIdsByUserDecisionStatus = "tasks.submission.task_ids_by_user_decision_status.get";
+		public const string GetTaskIdsWithAnySubmissionByUser = "tasks.submission.task_ids_with_any_submission_by_user.get";
 		public const string GetById = "tasks.submission.get";
 		public const string GetTaskUsers = "tasks.users.get";
 	}
