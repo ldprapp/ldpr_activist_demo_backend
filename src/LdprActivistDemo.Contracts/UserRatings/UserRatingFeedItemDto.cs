@@ -15,4 +15,5 @@ public sealed record UserRatingFeedItemDto(
 	int? Rank)
 {
 	public string? AvatarImageUrl { get; init; }
+	public int Balance { get; init; }
 }

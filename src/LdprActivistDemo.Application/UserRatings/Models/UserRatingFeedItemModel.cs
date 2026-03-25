@@ -12,5 +12,8 @@ public sealed record UserRatingFeedItemModel(
 	string SettlementName,
 	string Role,
 	bool IsPhoneConfirmed,
-	string? AvatarImageUrl,
-	int? Rank);
+	int? Rank)
+{
+	public string? AvatarImageUrl { get; init; }
+	public int Balance { get; init; }
+}

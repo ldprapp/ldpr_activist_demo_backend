@@ -274,6 +274,7 @@ public sealed class UserRatingsController : ControllerBase
 			model.Rank)
 		{
 			AvatarImageUrl = model.AvatarImageUrl,
+			Balance = model.Balance,
 		};
 
 	private UserRatingsRefreshScheduleResponse ToScheduleResponse(UserRatingsRefreshScheduleModel model)

@@ -161,12 +161,14 @@ public sealed class UserRatingRepository : IUserRatingRepository
 			DomainLogEvents.UserRatings.Repository.GetFeed,
 			LogLayers.PersistenceRepository,
 			PersistenceLogOperations.UserRatings.GetFeed,
-			properties); _logger.LogStarted(
-				DomainLogEvents.UserRatings.Repository.GetFeed,
-				LogLayers.PersistenceRepository,
-				PersistenceLogOperations.UserRatings.GetFeed,
-				"User ratings feed query started.",
-				properties);
+			properties);
+
+		_logger.LogStarted(
+			DomainLogEvents.UserRatings.Repository.GetFeed,
+			LogLayers.PersistenceRepository,
+			PersistenceLogOperations.UserRatings.GetFeed,
+			"User ratings feed query started.",
+			properties);
 
 		try
 		{
@@ -174,12 +176,17 @@ public sealed class UserRatingRepository : IUserRatingRepository
 				from u in _db.Users.AsNoTracking()
 				join ur in _db.UserRatings.AsNoTracking() on u.Id equals ur.UserId into ratingGroup
 				from ur in ratingGroup.DefaultIfEmpty()
+				join transaction in _db.UserPointsTransactions
+						.AsNoTracking()
+						.Where(x => !x.IsCancelled)
+					on u.Id equals transaction.UserId into transactionGroup
 				select new
 				{
 					User = u,
 					OverallRank = ur == null ? (int?)null : ur.OverallRank,
 					RegionRank = ur == null ? (int?)null : ur.RegionRank,
 					SettlementRank = ur == null ? (int?)null : ur.SettlementRank,
+					Balance = transactionGroup.Sum(x => (int?)x.Amount) ?? 0,
 				};
 
 			baseQuery = baseQuery.Where(
@@ -216,8 +223,11 @@ public sealed class UserRatingRepository : IUserRatingRepository
 						x.User.Settlement.Name,
 						x.User.Role,
 						x.User.IsPhoneConfirmed,
-						x.User.AvatarImageUrl,
-						x.SettlementRank));
+						x.SettlementRank)
+					{
+						AvatarImageUrl = x.User.AvatarImageUrl,
+						Balance = x.Balance,
+					});
 			}
 			else if(normalizedRegionName is not null)
 			{
@@ -236,8 +246,11 @@ public sealed class UserRatingRepository : IUserRatingRepository
 						x.User.Settlement.Name,
 						x.User.Role,
 						x.User.IsPhoneConfirmed,
-						x.User.AvatarImageUrl,
-						x.RegionRank));
+						x.RegionRank)
+					{
+						AvatarImageUrl = x.User.AvatarImageUrl,
+						Balance = x.Balance,
+					});
 			}
 			else
 			{
@@ -256,8 +269,11 @@ public sealed class UserRatingRepository : IUserRatingRepository
 						x.User.Settlement.Name,
 						x.User.Role,
 						x.User.IsPhoneConfirmed,
-						x.User.AvatarImageUrl,
-						x.OverallRank));
+						x.OverallRank)
+					{
+						AvatarImageUrl = x.User.AvatarImageUrl,
+						Balance = x.Balance,
+					});
 			}
 
 			if(start is not null && end is not null)
@@ -413,7 +429,7 @@ public sealed class UserRatingRepository : IUserRatingRepository
 			        u."SettlementId" AS "SettlementId",
 			        COALESCE(SUM(t."Amount"), 0) AS "TotalPoints"
 			    FROM users u
-			    LEFT JOIN user_points_transactions t ON t."UserId" = u."Id"
+			    LEFT JOIN user_points_transactions t ON t."UserId" = u."Id" AND t."IsCancelled" = FALSE
 			    WHERE u."Role" <> '{bannedRole}'
 			    GROUP BY u."Id", u."RegionId", u."SettlementId"
 			),
