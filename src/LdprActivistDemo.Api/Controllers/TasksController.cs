@@ -274,6 +274,9 @@ public sealed class TasksController : ControllerBase
 	/// Операция доступна пользователю с ролью <c>coordinator</c> или <c>admin</c>.
 	/// Тело запроса передаётся как <c>multipart/form-data</c>, потому что задача может содержать обложку.
 	/// Для <c>verificationType=auto</c> параметр <c>autoVerificationActionType</c> обязателен.
+	/// Для <c>autoVerificationActionType=first_login</c> дополнительно требуются
+	/// <c>verificationType=auto</c>, <c>reuseType=disposable</c> и пустой список
+	/// <c>trustedCoordinatorIds</c>. Такие задачи может создавать только пользователь с ролью <c>admin</c>.
 	/// </remarks>
 	/// <param name="actorUserId">Идентификатор пользователя, создающего задачу.</param>
 	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>.</param>
@@ -358,7 +361,17 @@ public sealed class TasksController : ControllerBase
 					["autoVerificationActionType"] = new[] { autoVerificationActionTypeError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр autoVerificationActionType обязателен для verificationType='auto' и допускает только 'invite_friend', 'first_login' или 'auto'.");
+				detail: "Параметр autoVerificationActionType обязателен для verificationType='auto' и допускает только 'first_login' или 'auto'.");
+		}
+
+		var invalidFirstLoginTaskRules = TryBuildCreateFirstLoginTaskValidationProblem(
+			request,
+			verificationType,
+			reuseType,
+			autoVerificationActionType);
+		if(invalidFirstLoginTaskRules is not null)
+		{
+			return invalidFirstLoginTaskRules;
 		}
 
 		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
@@ -418,6 +431,9 @@ public sealed class TasksController : ControllerBase
 	/// <remarks>
 	/// Обновление доступно автору задачи, доверенному координатору задачи или администратору
 	/// в соответствии с серверными правилами доступа. Тело запроса передаётся как <c>multipart/form-data</c>.
+	/// Для задач с <c>autoVerificationActionType=first_login</c> обновление доступно только администратору.
+	/// Такие задачи не могут иметь trusted coordinators и обязаны находиться в конфигурации
+	/// <c>verificationType=auto</c> и <c>reuseType=disposable</c>.
 	/// </remarks>
 	/// <param name="taskId">Идентификатор задачи.</param>
 	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
@@ -504,7 +520,7 @@ public sealed class TasksController : ControllerBase
 					["autoVerificationActionType"] = new[] { autoVerificationActionTypeError! },
 				},
 				title: "Некорректный запрос.",
-				detail: "Параметр autoVerificationActionType допускает только поддерживаемые значения ('invite_friend', 'first_login', 'auto'). Для verificationType='manual' игнорируется и сохраняется NULL.");
+				detail: "Параметр autoVerificationActionType допускает только поддерживаемые значения ('first_login', 'auto'). Для verificationType='manual' игнорируется и сохраняется NULL.");
 		}
 
 		var auth = await _tasks.ValidateActorAsync(actorUserId, actorUserPassword!, cancellationToken);
@@ -558,6 +574,7 @@ public sealed class TasksController : ControllerBase
 	/// </summary>
 	/// <remarks>
 	/// Операция доступна автору задачи или администратору.
+	/// Для задач с <c>autoVerificationActionType=first_login</c> закрытие доступно только администратору.
 	/// </remarks>
 	/// <param name="taskId">Идентификатор задачи.</param>
 	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
@@ -593,6 +610,7 @@ public sealed class TasksController : ControllerBase
 	/// </summary>
 	/// <remarks>
 	/// Операция доступна автору задачи или администратору.
+	/// Для задач с <c>autoVerificationActionType=first_login</c> открытие доступно только администратору.
 	/// </remarks>
 	/// <param name="taskId">Идентификатор задачи.</param>
 	/// <param name="actorUserId">Идентификатор пользователя, выполняющего операцию.</param>
@@ -1692,7 +1710,7 @@ public sealed class TasksController : ControllerBase
 		public string? ReuseType { get; set; }
 
 		/// <summary>
-		/// Действие для авто-верификации: <c>invite_friend</c>, <c>first_login</c> или <c>auto</c>.
+		/// Действие для авто-верификации: <c>first_login</c> или <c>auto</c>.
 		/// </summary>
 		public string? AutoVerificationActionType { get; set; }
 
@@ -1763,7 +1781,7 @@ public sealed class TasksController : ControllerBase
 		public string? ReuseType { get; set; }
 
 		/// <summary>
-		/// Новое действие для авто-верификации: <c>invite_friend</c>, <c>first_login</c> или <c>auto</c>.
+		/// Новое действие для авто-верификации: <c>first_login</c> или <c>auto</c>.
 		/// </summary>
 		public string? AutoVerificationActionType { get; set; }
 
@@ -2231,6 +2249,70 @@ public sealed class TasksController : ControllerBase
 		return false;
 	}
 
+	private IActionResult? TryBuildCreateFirstLoginTaskValidationProblem(
+		CreateTaskFormRequest request,
+		string verificationType,
+		string reuseType,
+		string? autoVerificationActionType)
+	{
+		var requestedFirstLoginAutoVerification =
+			string.Equals(
+				request.AutoVerificationActionType?.Trim(),
+				TaskAutoVerificationActionType.FirstLogin,
+				StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(
+				autoVerificationActionType,
+				TaskAutoVerificationActionType.FirstLogin,
+				StringComparison.Ordinal);
+
+		if(!requestedFirstLoginAutoVerification)
+		{
+			return null;
+		}
+
+		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+		if(!string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+		{
+			errors["verificationType"] = new[]
+			{
+				$"VerificationType must be '{TaskVerificationType.Auto}' when autoVerificationActionType is '{TaskAutoVerificationActionType.FirstLogin}'.",
+			};
+		}
+
+		if(!string.Equals(reuseType, TaskReuseType.Disposable, StringComparison.Ordinal))
+		{
+			errors["reuseType"] = new[]
+			{
+				$"ReuseType must be '{TaskReuseType.Disposable}' when autoVerificationActionType is '{TaskAutoVerificationActionType.FirstLogin}'.",
+			};
+		}
+
+		if(request.DeadlineAt.HasValue)
+		{
+			errors["deadlineAt"] = new[]
+			{
+				$"DeadlineAt must be empty when autoVerificationActionType is '{TaskAutoVerificationActionType.FirstLogin}'.",
+			};
+		}
+
+		if(request.TrustedCoordinatorIds is { Count: > 0 })
+		{
+			errors["trustedCoordinatorIds"] = new[]
+			{
+				$"TrustedCoordinatorIds must be empty when autoVerificationActionType is '{TaskAutoVerificationActionType.FirstLogin}'.",
+			};
+		}
+
+		return errors.Count == 0
+			? null
+			: this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				errors,
+				title: "Некорректный запрос.",
+				detail: "Для задач с autoVerificationActionType='first_login' требуется конфигурация verificationType='auto', reuseType='disposable', пустой deadlineAt и пустой список trustedCoordinatorIds.");
+	}
+
 	private static bool TryNormalizeTaskVerificationTypeForCreate(string? raw, out string normalized, out string? error)
 	{
 		error = null;
@@ -2340,12 +2422,6 @@ public sealed class TasksController : ControllerBase
 
 		var token = raw.Trim().ToLowerInvariant();
 
-		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
-		{
-			normalized = TaskAutoVerificationActionType.InviteFriend;
-			return true;
-		}
-
 		if(string.Equals(token, TaskAutoVerificationActionType.FirstLogin, StringComparison.Ordinal))
 		{
 			normalized = TaskAutoVerificationActionType.FirstLogin;
@@ -2358,7 +2434,7 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
-		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}', '{TaskAutoVerificationActionType.FirstLogin}' or '{TaskAutoVerificationActionType.Auto}'.";
+		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.FirstLogin}' or '{TaskAutoVerificationActionType.Auto}'.";
 		return false;
 	}
 
@@ -2392,12 +2468,6 @@ public sealed class TasksController : ControllerBase
 
 		var token = raw.Trim().ToLowerInvariant();
 
-		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
-		{
-			normalized = TaskAutoVerificationActionType.InviteFriend;
-			return true;
-		}
-
 		if(string.Equals(token, TaskAutoVerificationActionType.FirstLogin, StringComparison.Ordinal))
 		{
 			normalized = TaskAutoVerificationActionType.FirstLogin;
@@ -2410,7 +2480,7 @@ public sealed class TasksController : ControllerBase
 			return true;
 		}
 
-		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.InviteFriend}', '{TaskAutoVerificationActionType.FirstLogin}' or '{TaskAutoVerificationActionType.Auto}'.";
+		error = $"AutoVerificationActionType must be '{TaskAutoVerificationActionType.FirstLogin}' or '{TaskAutoVerificationActionType.Auto}'.";
 		return false;
 	}
 
@@ -2524,7 +2594,7 @@ public sealed class TasksController : ControllerBase
 				StatusCodes.Status403Forbidden,
 				ApiErrorCodes.Forbidden,
 				"Нет доступа.",
-				"Операция запрещена: требуется автор задачи, назначенный ответственный координатор задачи или любой администратор."),
+				"Операция запрещена для текущего пользователя по серверным правилам доступа."),
 			TaskOperationError.TaskAccessDenied => this.ProblemWithCode(StatusCodes.Status403Forbidden, ApiErrorCodes.TaskAccessDenied, "Нет доступа.", "Задача недоступна пользователю или операция запрещена для текущей роли."),
 			TaskOperationError.TaskNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.TaskNotFound, "Задача не найдена."),
 			TaskOperationError.RegionNotFound => this.ProblemWithCode(StatusCodes.Status404NotFound, ApiErrorCodes.GeoRegionNotFound, "Регион не найден."),

@@ -10,4 +10,5 @@ public sealed record UserCreateModel(
 	DateOnly BirthDate,
 	string RegionName,
 	string SettlementName,
-	Guid? AvatarImageId = null);
+	Guid? AvatarImageId = null,
+	int? ReferralCode = null);

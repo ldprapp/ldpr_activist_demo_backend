@@ -25,6 +25,12 @@ public sealed class TaskRepository : ITaskRepository
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
+	private static bool IsFirstLoginAutoVerificationActionType(string? value)
+		=> string.Equals(
+			(value ?? string.Empty).Trim(),
+			TaskAutoVerificationActionType.FirstLogin,
+			StringComparison.OrdinalIgnoreCase);
+
 	public async Task<TaskOperationResult<Guid>> CreateAsync(Guid actorUserId, TaskCreateModel model, CancellationToken cancellationToken)
 	{
 		return await ExecuteOperationAsync(
@@ -64,6 +70,25 @@ public sealed class TaskRepository : ITaskRepository
 					return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
 				}
 
+				var requestedFirstLoginAutoVerification = IsFirstLoginAutoVerificationActionType(model.AutoVerificationActionType);
+
+				if(requestedFirstLoginAutoVerification
+				   && !string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+				{
+					return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				if(requestedFirstLoginAutoVerification
+				   && !string.Equals(reuseType, TaskReuseType.Disposable, StringComparison.Ordinal))
+				{
+					return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+				}
+
+				if(requestedFirstLoginAutoVerification && model.DeadlineAt.HasValue)
+				{
+					return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+				}
+
 				string? autoVerificationActionType = null;
 
 				if(string.Equals(verificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
@@ -86,6 +111,19 @@ public sealed class TaskRepository : ITaskRepository
 					.Where(x => x != Guid.Empty)
 					.Distinct()
 					.ToArray();
+
+				if(requestedFirstLoginAutoVerification)
+				{
+					if(!UserRoleRules.IsAdmin(actor.Role))
+					{
+						return TaskOperationResult<Guid>.Fail(TaskOperationError.Forbidden);
+					}
+
+					if(trustedCoordinatorIds.Length > 0)
+					{
+						return TaskOperationResult<Guid>.Fail(TaskOperationError.ValidationFailed);
+					}
+				}
 
 				if(trustedCoordinatorIds.Length > 0)
 				{
@@ -177,8 +215,15 @@ public sealed class TaskRepository : ITaskRepository
 				}
 
 				var previousVerificationType = task.VerificationType;
+				var currentIsFirstLoginTask = IsFirstLoginAutoVerificationActionType(task.AutoVerificationActionType);
+				var requestedFirstLoginAutoVerification = IsFirstLoginAutoVerificationActionType(model.AutoVerificationActionType);
 				var isAuthor = task.AuthorUserId == actorUserId;
 				var isAdmin = UserRoleRules.IsAdmin(actor.Role);
+
+				if(currentIsFirstLoginTask && !isAdmin)
+				{
+					return TaskOperationResult.Fail(TaskOperationError.Forbidden);
+				}
 
 				if(!isAuthor && !isAdmin)
 				{
@@ -227,6 +272,11 @@ public sealed class TaskRepository : ITaskRepository
 
 				if(string.Equals(effectiveVerificationType, TaskVerificationType.Manual, StringComparison.Ordinal))
 				{
+					if(requestedFirstLoginAutoVerification)
+					{
+						return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+					}
+
 					task.AutoVerificationActionType = null;
 				}
 				else
@@ -260,6 +310,36 @@ public sealed class TaskRepository : ITaskRepository
 					.Where(x => x != Guid.Empty)
 					.Distinct()
 					.ToArray();
+
+				var resultingIsFirstLoginTask = IsFirstLoginAutoVerificationActionType(task.AutoVerificationActionType);
+
+				if(resultingIsFirstLoginTask)
+				{
+					if(!isAdmin)
+					{
+						return TaskOperationResult.Fail(TaskOperationError.Forbidden);
+					}
+
+					if(!string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
+					{
+						return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+					}
+
+					if(!string.Equals(task.ReuseType, TaskReuseType.Disposable, StringComparison.Ordinal))
+					{
+						return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+					}
+
+					if(model.DeadlineAt.HasValue)
+					{
+						return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+					}
+
+					if(trustedCoordinatorIds.Length > 0)
+					{
+						return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
+					}
+				}
 
 				if(trustedCoordinatorIds.Length > 0)
 				{
@@ -357,6 +437,12 @@ public sealed class TaskRepository : ITaskRepository
 
 				var isAuthor = task.AuthorUserId == actorUserId;
 				var isAdmin = UserRoleRules.IsAdmin(actor.Role);
+				var isFirstLoginTask = IsFirstLoginAutoVerificationActionType(task.AutoVerificationActionType);
+
+				if(isFirstLoginTask && !isAdmin)
+				{
+					return TaskOperationResult.Fail(TaskOperationError.Forbidden);
+				}
 
 				if(!isAuthor && !isAdmin)
 				{
@@ -393,6 +479,12 @@ public sealed class TaskRepository : ITaskRepository
 
 		var isAuthor = task.AuthorUserId == actorUserId;
 		var isAdmin = UserRoleRules.IsAdmin(actor.Role);
+		var isFirstLoginTask = IsFirstLoginAutoVerificationActionType(task.AutoVerificationActionType);
+
+		if(isFirstLoginTask && !isAdmin)
+		{
+			return TaskOperationResult.Fail(TaskOperationError.Forbidden);
+		}
 
 		if(!isAuthor && !isAdmin)
 		{
@@ -977,7 +1069,7 @@ public sealed class TaskRepository : ITaskRepository
 
 	private static bool TryNormalizeAutoVerificationActionType(string raw, out string normalized)
 	{
-		normalized = TaskAutoVerificationActionType.InviteFriend;
+		normalized = TaskAutoVerificationActionType.Auto;
 
 		if(string.IsNullOrWhiteSpace(raw))
 		{
@@ -985,12 +1077,6 @@ public sealed class TaskRepository : ITaskRepository
 		}
 
 		var token = raw.Trim().ToLowerInvariant();
-
-		if(string.Equals(token, TaskAutoVerificationActionType.InviteFriend, StringComparison.Ordinal))
-		{
-			normalized = TaskAutoVerificationActionType.InviteFriend;
-			return true;
-		}
 
 		if(string.Equals(token, TaskAutoVerificationActionType.FirstLogin, StringComparison.Ordinal))
 		{

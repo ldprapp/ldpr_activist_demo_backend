@@ -15,6 +15,7 @@ public static class ApiErrorCodes
 
 	public const string UserNotFound = "user_not_found";
 	public const string PhoneAlreadyExists = "phone_already_exists";
+	public const string ReferralCodeNotFound = "referral_code_not_found";
 	public const string GenderInvalid = "gender_invalid";
 	public const string SettlementRegionMismatch = "settlement_region_mismatch";
 	public const string UserRoleChangeNotAllowed = "user_role_change_not_allowed";

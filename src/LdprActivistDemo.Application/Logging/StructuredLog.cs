@@ -182,6 +182,7 @@ public static class StructuredLogDomains
 	public const string Startup = "startup";
 	public const string Http = "http";
 	public const string Api = "api";
+	public const string Referrals = "referrals";
 	public const string Geo = "geo";
 	public const string Image = "images";
 	public const string Task = "tasks";

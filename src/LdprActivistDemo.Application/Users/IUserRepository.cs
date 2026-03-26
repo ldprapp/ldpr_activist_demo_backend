@@ -9,6 +9,8 @@ public interface IUserRepository
 
 	Task<UserPublicModel?> GetPublicByIdAsync(Guid userId, CancellationToken cancellationToken);
 	Task<UserPublicModel?> GetPublicByPhoneAsync(string phoneNumber, CancellationToken cancellationToken);
+	Task<int?> GetReferralCodeAsync(Guid userId, CancellationToken cancellationToken);
+	Task<IReadOnlyList<UserPublicModel>?> GetInvitedUsersAsync(Guid inviterUserId, CancellationToken cancellationToken);
 
 	Task<bool> ExistsConfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken);
 	Task<bool> DeleteUnconfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken);

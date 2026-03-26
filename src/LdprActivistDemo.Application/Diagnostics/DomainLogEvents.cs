@@ -158,6 +158,36 @@ public static class DomainLogEvents
 		public const string UpdatePasswordHash = Repository.UpdatePasswordHash;
 	}
 
+	public static class Referral
+	{
+		public static class Service
+		{
+			public const string GetContent = "referrals.service.content.get";
+			public const string GetInvitedUsers = "referrals.service.invited_users.get";
+			public const string GetSettings = "referrals.service.settings.get";
+			public const string UpdateSettings = "referrals.service.settings.update";
+			public const string SetInviteTextTemplate = "referrals.service.template.set";
+			public const string SetInviterRewardPoints = "referrals.service.inviter_reward_points.set";
+			public const string SetInvitedUserRewardPoints = "referrals.service.invited_user_reward_points.set";
+		}
+
+		public static class Repository
+		{
+			public const string GetInviteTextTemplate = "referrals.repository.template.get";
+			public const string SetInviteTextTemplate = "referrals.repository.template.set";
+			public const string SetInviterRewardPoints = "referrals.repository.inviter_reward_points.set";
+			public const string SetInvitedUserRewardPoints = "referrals.repository.invited_user_reward_points.set";
+		}
+
+		public const string GetContent = Service.GetContent;
+		public const string GetInvitedUsers = Service.GetInvitedUsers;
+		public const string GetSettings = Service.GetSettings;
+		public const string UpdateSettings = Service.UpdateSettings;
+		public const string SetInviteTextTemplate = Service.SetInviteTextTemplate;
+		public const string SetInviterRewardPoints = Service.SetInviterRewardPoints;
+		public const string SetInvitedUserRewardPoints = Service.SetInvitedUserRewardPoints;
+	}
+
 	public static class Task
 	{
 		public static class Service
@@ -280,6 +310,7 @@ public static class DomainLogEvents
 			public const string Login = "users.service.login";
 			public const string GetByPhone = "users.service.get_by_phone";
 			public const string GetById = "users.service.get";
+			public const string GetReferralCode = "users.service.referral_code.get";
 			public const string UpdateProfile = "users.service.profile.update";
 			public const string ChangePhone = "users.service.phone.change";
 			public const string ChangePassword = "users.service.password.change";
@@ -304,6 +335,7 @@ public static class DomainLogEvents
 			public const string GetInternalByPhone = "users.repository.internal.get_by_phone";
 			public const string GetPublicById = "users.repository.public.get_by_id";
 			public const string GetPublicByPhone = "users.repository.public.get_by_phone";
+			public const string GetReferralCode = "users.repository.referral_code.get";
 			public const string ExistsConfirmedByPhone = "users.repository.phone.confirmed.exists";
 			public const string DeleteUnconfirmedByPhone = "users.repository.unconfirmed.delete_by_phone";
 			public const string DeleteUnconfirmedById = "users.repository.unconfirmed.delete_by_id";
@@ -326,6 +358,7 @@ public static class DomainLogEvents
 		public const string Login = Service.Login;
 		public const string GetByPhone = Service.GetByPhone;
 		public const string GetById = Service.GetById;
+		public const string GetReferralCode = Service.GetReferralCode;
 		public const string UpdateProfile = Service.UpdateProfile;
 		public const string ChangePhone = Service.ChangePhone;
 		public const string ChangePassword = Service.ChangePassword;

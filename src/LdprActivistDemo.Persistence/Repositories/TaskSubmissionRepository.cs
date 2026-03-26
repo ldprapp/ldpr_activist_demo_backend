@@ -27,6 +27,45 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
+	private static bool IsImmediateAutoApprovalActionType(string? autoVerificationActionType)
+	{
+		var normalized = (autoVerificationActionType ?? string.Empty).Trim();
+
+		return string.Equals(
+				normalized,
+				TaskAutoVerificationActionType.Auto,
+				StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(
+				normalized,
+				TaskAutoVerificationActionType.FirstLogin,
+				StringComparison.OrdinalIgnoreCase);
+	}
+
+	private void AddApprovalRewardTransaction(
+		Guid userId,
+		int rewardPoints,
+		Guid? coordinatorUserId,
+		Guid taskId,
+		Guid submissionId,
+		DateTimeOffset transactionAt)
+	{
+		if(rewardPoints == 0)
+		{
+			return;
+		}
+
+		_db.UserPointsTransactions.Add(new UserPointsTransaction
+		{
+			Id = Guid.NewGuid(),
+			UserId = userId,
+			Amount = rewardPoints,
+			CoordinatorUserId = coordinatorUserId,
+			TaskId = taskId,
+			TransactionAt = transactionAt,
+			Comment = $"Points for approval of submission {submissionId:D}.",
+		});
+	}
+
 	public async Task<TaskSubmitOperationResult> SubmitAsync(Guid actorUserId, Guid userId, Guid taskId, TaskSubmissionCreateModel model, CancellationToken cancellationToken)
 	{
 		return await ExecuteSubmitAsync(
@@ -81,7 +120,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 				var isAutoVerification = string.Equals(task.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal);
 				var isImmediateAutoApproval =
-					isAutoVerification && string.Equals(task.AutoVerificationActionType, TaskAutoVerificationActionType.Auto, StringComparison.Ordinal);
+					isAutoVerification && IsImmediateAutoApprovalActionType(task.AutoVerificationActionType);
 
 				if(!isReusable)
 				{
@@ -115,17 +154,15 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 
 				_db.TaskSubmissions.Add(submission);
 
-				if(isImmediateAutoApproval && task.RewardPoints != 0)
+				if(isImmediateAutoApproval)
 				{
-					_db.UserPointsTransactions.Add(new UserPointsTransaction
-					{
-						Id = Guid.NewGuid(),
-						UserId = userId,
-						Amount = task.RewardPoints,
-						TransactionAt = decidedAt!.Value,
-						TaskId = taskId,
-						Comment = $"Points for approval of submission {submission.Id:D}.",
-					});
+					AddApprovalRewardTransaction(
+						userId,
+						task.RewardPoints,
+						coordinatorUserId: null,
+						taskId,
+						submission.Id,
+						decidedAt!.Value);
 				}
 
 				await _db.SaveChangesAsync(cancellationToken);
@@ -593,19 +630,13 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				submission.DecidedByCoordinatorId = actorUserId;
 				submission.DecidedAt = decidedAt;
 
-				if(taskMeta.RewardPoints != 0)
-				{
-					_db.UserPointsTransactions.Add(new UserPointsTransaction
-					{
-						Id = Guid.NewGuid(),
-						UserId = submission.UserId,
-						Amount = taskMeta.RewardPoints,
-						CoordinatorUserId = actorUserId,
-						TaskId = submission.TaskId,
-						TransactionAt = decidedAt,
-						Comment = $"Points for approval of submission {submissionId:D}.",
-					});
-				}
+				AddApprovalRewardTransaction(
+					submission.UserId,
+					taskMeta.RewardPoints,
+					actorUserId,
+					submission.TaskId,
+					submissionId,
+					decidedAt);
 
 				await _db.SaveChangesAsync(cancellationToken);
 				return TaskOperationResult.Success();

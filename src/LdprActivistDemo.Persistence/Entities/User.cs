@@ -16,6 +16,8 @@ public sealed class User
 
 	public string PhoneNumber { get; set; } = string.Empty;
 
+	public int ReferralCode { get; set; }
+
 	public string PasswordHash { get; set; } = string.Empty;
 
 	public DateOnly BirthDate { get; set; }

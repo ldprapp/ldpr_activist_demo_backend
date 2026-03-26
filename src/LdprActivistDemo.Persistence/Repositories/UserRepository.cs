@@ -1,4 +1,7 @@
-﻿using LdprActivistDemo.Application.Users;
+﻿using System.Security.Cryptography;
+
+using LdprActivistDemo.Application.Referrals;
+using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Persistence.Repositories;
 
@@ -8,6 +11,13 @@ namespace LdprActivistDemo.Persistence;
 
 public sealed class UserRepository : IUserRepository
 {
+	private const string InitializationComment = "User initialization transaction.";
+	private const string ReferralInviteRewardComment = "Награда за приглашение пользователя";
+	private const string ReferralRegistrationBonusComment = "Бонус за регистрацию";
+	private const int ReferralSettingsSingletonId = 1;
+	private const string InviterRewardPointsPropertyName = "InviterRewardPoints";
+	private const string InvitedUserRewardPointsPropertyName = "InvitedUserRewardPoints";
+
 	private readonly AppDbContext _db;
 	private readonly IPasswordHasher _passwordHasher;
 
@@ -51,6 +61,56 @@ public sealed class UserRepository : IUserRepository
 			.Include(x => x.Settlement)
 			.FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber, cancellationToken);
 		return u is null ? null : ToPublic(u);
+	}
+
+	public async Task<int?> GetReferralCodeAsync(Guid userId, CancellationToken cancellationToken)
+	{
+		if(userId == Guid.Empty)
+		{
+			return null;
+		}
+
+		return await _db.Users.AsNoTracking()
+			.Where(x => x.Id == userId)
+			.Select(x => (int?)x.ReferralCode)
+			.FirstOrDefaultAsync(cancellationToken);
+	}
+
+	public async Task<IReadOnlyList<UserPublicModel>?> GetInvitedUsersAsync(
+		Guid inviterUserId,
+		CancellationToken cancellationToken)
+	{
+		if(inviterUserId == Guid.Empty)
+		{
+			return null;
+		}
+
+		var inviterExists = await _db.Users.AsNoTracking()
+			.AnyAsync(x => x.Id == inviterUserId, cancellationToken);
+		if(!inviterExists)
+		{
+			return null;
+		}
+
+		return await _db.Users.AsNoTracking()
+			.Where(x => _db.UserReferralInvites.Any(r => r.InvitedUserId == x.Id && r.InviterUserId == inviterUserId))
+			.OrderBy(x => x.LastName)
+			.ThenBy(x => x.FirstName)
+			.ThenBy(x => x.MiddleName)
+			.Select(u => new UserPublicModel(
+				u.Id,
+				u.LastName,
+				u.FirstName,
+				u.MiddleName,
+				u.Gender,
+				u.PhoneNumber,
+				u.BirthDate,
+				u.Region.Name,
+				u.Settlement.Name,
+				u.Role,
+				u.IsPhoneConfirmed,
+				u.AvatarImageUrl))
+			.ToListAsync(cancellationToken);
 	}
 
 	public Task<bool> ExistsConfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
@@ -125,42 +185,123 @@ public sealed class UserRepository : IUserRepository
 
 		cancellationToken.ThrowIfCancellationRequested();
 
-		var userId = Guid.NewGuid();
-		var entity = new User
-		{
-			Id = userId,
-			LastName = model.LastName,
-			FirstName = model.FirstName,
-			MiddleName = model.MiddleName,
-			Gender = gender,
-			PhoneNumber = model.PhoneNumber,
-			PasswordHash = _passwordHasher.Hash(model.Password),
-			BirthDate = model.BirthDate,
-			RegionId = geo.RegionId,
-			SettlementId = geo.SettlementId,
-			Role = UserRoles.Activist,
-			IsPhoneConfirmed = false,
-			AvatarImageUrl = null,
-		};
+		Guid? inviterUserId = null;
+		var inviterRewardPoints = 0;
+		var invitedUserRewardPoints = 0;
 
-		_db.Users.Add(entity);
-		_db.UserPointsTransactions.Add(new UserPointsTransaction
+		if(model.ReferralCode.HasValue)
 		{
-			Id = Guid.NewGuid(),
-			UserId = userId,
-			Amount = 0,
-			TransactionAt = DateTimeOffset.UtcNow,
-			Comment = "User initialization transaction.",
-		});
-		_db.UserRatings.Add(new UserRating
+			inviterUserId = await _db.Users.AsNoTracking()
+				.Where(x => x.ReferralCode == model.ReferralCode.Value)
+				.Select(x => (Guid?)x.Id)
+				.FirstOrDefaultAsync(cancellationToken);
+
+			if(!inviterUserId.HasValue)
+			{
+				throw new InvalidOperationException("ReferralCode not found.");
+			}
+
+			var rewardSettings = await GetReferralRewardSettingsAsync(cancellationToken);
+			inviterRewardPoints = rewardSettings.InviterRewardPoints;
+			invitedUserRewardPoints = rewardSettings.InvitedUserRewardPoints;
+		}
+
+		cancellationToken.ThrowIfCancellationRequested();
+
+		for(var attempt = 0; attempt < 8; attempt++)
 		{
-			UserId = userId,
-			OverallRank = null,
-			RegionRank = null,
-			SettlementRank = null,
-		});
-		await _db.SaveChangesAsync(cancellationToken);
-		return entity.Id;
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var userId = Guid.NewGuid();
+			var referralCode = await GenerateUniqueReferralCodeAsync(cancellationToken);
+
+			var entity = new User
+			{
+				Id = userId,
+				LastName = model.LastName,
+				FirstName = model.FirstName,
+				MiddleName = model.MiddleName,
+				Gender = gender,
+				PhoneNumber = model.PhoneNumber,
+				ReferralCode = referralCode,
+				PasswordHash = _passwordHasher.Hash(model.Password),
+				BirthDate = model.BirthDate,
+				RegionId = geo.RegionId,
+				SettlementId = geo.SettlementId,
+				Role = UserRoles.Activist,
+				IsPhoneConfirmed = false,
+				AvatarImageUrl = null,
+			};
+
+			var transactionAtUtc = DateTimeOffset.UtcNow;
+
+			_db.Users.Add(entity);
+			_db.UserPointsTransactions.Add(new UserPointsTransaction
+			{
+				Id = Guid.NewGuid(),
+				UserId = userId,
+				Amount = 0,
+				TransactionAt = transactionAtUtc,
+				Comment = InitializationComment,
+			});
+
+			if(inviterUserId.HasValue)
+			{
+				_db.UserReferralInvites.Add(new UserReferralInvite
+				{
+					InviterUserId = inviterUserId.Value,
+					InvitedUserId = userId,
+				});
+			}
+
+			if(inviterUserId.HasValue && inviterRewardPoints > 0)
+			{
+				_db.UserPointsTransactions.Add(new UserPointsTransaction
+				{
+					Id = Guid.NewGuid(),
+					UserId = inviterUserId.Value,
+					Amount = inviterRewardPoints,
+					TransactionAt = transactionAtUtc,
+					Comment = ReferralInviteRewardComment,
+					CoordinatorUserId = null,
+					TaskId = null,
+				});
+			}
+
+			if(inviterUserId.HasValue && invitedUserRewardPoints > 0)
+			{
+				_db.UserPointsTransactions.Add(new UserPointsTransaction
+				{
+					Id = Guid.NewGuid(),
+					UserId = userId,
+					Amount = invitedUserRewardPoints,
+					TransactionAt = transactionAtUtc,
+					Comment = ReferralRegistrationBonusComment,
+					CoordinatorUserId = null,
+					TaskId = null,
+				});
+			}
+
+			_db.UserRatings.Add(new UserRating
+			{
+				UserId = userId,
+				OverallRank = null,
+				RegionRank = null,
+				SettlementRank = null,
+			});
+
+			try
+			{
+				await _db.SaveChangesAsync(cancellationToken);
+				return entity.Id;
+			}
+			catch(DbUpdateException ex) when(IsReferralCodeUniqueViolation(ex) && attempt < 7)
+			{
+				_db.ChangeTracker.Clear();
+			}
+		}
+
+		throw new InvalidOperationException("Failed to generate unique referral code.");
 	}
 
 	public async Task<bool> ValidatePasswordAsync(string phoneNumber, string password, CancellationToken cancellationToken)
@@ -399,8 +540,7 @@ public sealed class UserRepository : IUserRepository
 			query = query.Where(x => x.Settlement.Name.ToLower() == settlementKey);
 		}
 
-		return await query
-		   .Select(u => new UserPublicModel(
+		return await query.Select(u => new UserPublicModel(
 			   u.Id,
 			   u.LastName,
 			   u.FirstName,
@@ -412,8 +552,52 @@ public sealed class UserRepository : IUserRepository
 			   u.Settlement.Name,
 			   u.Role,
 			   u.IsPhoneConfirmed,
-			   u.AvatarImageUrl))
-		   .ToListAsync(cancellationToken);
+			   u.AvatarImageUrl)).ToListAsync(cancellationToken);
+	}
+
+	private async Task<ReferralRewardSettingsSnapshot> GetReferralRewardSettingsAsync(CancellationToken cancellationToken)
+	{
+		var settings = await _db.ReferralSettings.AsNoTracking()
+			.Where(x => x.Id == ReferralSettingsSingletonId)
+			.Select(x => new ReferralRewardSettingsSnapshot(
+				EF.Property<int>(x, InviterRewardPointsPropertyName),
+				EF.Property<int>(x, InvitedUserRewardPointsPropertyName)))
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return settings == default
+			? new ReferralRewardSettingsSnapshot(
+				ReferralSettingsDefaults.InviterRewardPoints,
+				ReferralSettingsDefaults.InvitedUserRewardPoints)
+			: settings;
+	}
+
+	private async Task<int> GenerateUniqueReferralCodeAsync(CancellationToken cancellationToken)
+	{
+		const int minReferralCode = 100_000;
+		const int maxReferralCodeExclusive = 1_000_000;
+
+		for(var attempt = 0; attempt < 32; attempt++)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var referralCode = RandomNumberGenerator.GetInt32(minReferralCode, maxReferralCodeExclusive);
+			var exists = await _db.Users.AsNoTracking()
+				.AnyAsync(x => x.ReferralCode == referralCode, cancellationToken);
+
+			if(!exists)
+			{
+				return referralCode;
+			}
+		}
+
+		throw new InvalidOperationException("Failed to generate unique referral code.");
+	}
+
+	private static bool IsReferralCodeUniqueViolation(DbUpdateException ex)
+	{
+		var message = $"{ex.Message} {ex.InnerException?.Message}";
+		return message.Contains("ix_users_referral_code", StringComparison.OrdinalIgnoreCase)
+			|| message.Contains("ReferralCode", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static string? NormalizeGenderOrThrow(string? value)
@@ -485,4 +669,8 @@ public sealed class UserRepository : IUserRepository
 
 	private static string NormalizeName(string? value)
 		=> (value ?? string.Empty).Trim();
+
+	private readonly record struct ReferralRewardSettingsSnapshot(
+		int InviterRewardPoints,
+		int InvitedUserRewardPoints);
 }

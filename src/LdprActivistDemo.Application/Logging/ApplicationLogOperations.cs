@@ -34,6 +34,17 @@ public static class ApplicationLogOperations
 		public const string UpsertSystem = "images.system.upsert";
 	}
 
+	public static class Referrals
+	{
+		public const string GetContent = "referrals.content.get";
+		public const string GetInvitedUsers = "referrals.invited_users.get";
+		public const string GetSettings = "referrals.settings.get";
+		public const string UpdateSettings = "referrals.settings.update";
+		public const string SetInviteTextTemplate = "referrals.template.set";
+		public const string SetInviterRewardPoints = "referrals.inviter_reward_points.set";
+		public const string SetInvitedUserRewardPoints = "referrals.invited_user_reward_points.set";
+	}
+
 	public static class Otp
 	{
 		public const string Issue = "otp.issue";
@@ -107,6 +118,7 @@ public static class ApplicationLogOperations
 		public const string Login = "users.login";
 		public const string GetByPhone = "users.get_by_phone";
 		public const string GetById = "users.get";
+		public const string GetReferralCode = "users.referral_code.get";
 		public const string ChangePassword = "users.password.change";
 		public const string SetAvatar = "users.avatar.set";
 		public const string UpdateProfile = "users.profile.update";

@@ -2,6 +2,7 @@
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
+using LdprActivistDemo.Application.Referrals;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.UserPoints;
 using LdprActivistDemo.Application.UserRatings;
@@ -25,6 +26,8 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IPasswordResetService, PasswordResetService>();
 
 		services.AddScoped<IActorAccessService, ActorAccessService>();
+		services.AddScoped<IReferralService, ReferralService>();
+		services.AddScoped<IReferralRewardSettingsService, ReferralRewardSettingsService>();
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<IUserPointsService, UserPointsService>();

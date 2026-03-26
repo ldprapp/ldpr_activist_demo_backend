@@ -1,4 +1,5 @@
-﻿using LdprActivistDemo.Application.Users.Models;
+﻿using LdprActivistDemo.Application.Referrals;
+using LdprActivistDemo.Application.Users.Models;
 using LdprActivistDemo.Contracts.Tasks;
 
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,8 @@ public sealed class AppDbContext : DbContext
 	public DbSet<Region> Regions => Set<Region>();
 	public DbSet<Settlement> Settlements => Set<Settlement>();
 	public DbSet<User> Users => Set<User>();
+	public DbSet<ReferralSettingsEntity> ReferralSettings => Set<ReferralSettingsEntity>();
+	public DbSet<UserReferralInvite> UserReferralInvites => Set<UserReferralInvite>();
 	public DbSet<UserRating> UserRatings => Set<UserRating>();
 	public DbSet<UserRatingsRefreshState> UserRatingsRefreshStates => Set<UserRatingsRefreshState>();
 	public DbSet<UserPointsTransaction> UserPointsTransactions => Set<UserPointsTransaction>();
@@ -61,6 +64,34 @@ public sealed class AppDbContext : DbContext
 				.OnDelete(DeleteBehavior.Restrict);
 		});
 
+		modelBuilder.Entity<ReferralSettingsEntity>(b =>
+		{
+			b.ToTable("referral_settings", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_referral_settings_singleton_id",
+					"\"Id\" = 1");
+				t.HasCheckConstraint(
+					"ck_referral_settings_invite_text_template_has_code",
+					"position('{code}' in \"InviteTextTemplate\") > 0");
+				t.HasCheckConstraint(
+					"ck_referral_settings_inviter_reward_points_non_negative",
+					"\"InviterRewardPoints\" >= 0");
+				t.HasCheckConstraint(
+					"ck_referral_settings_invited_user_reward_points_non_negative",
+					"\"InvitedUserRewardPoints\" >= 0");
+			});
+			b.HasKey(x => x.Id);
+			b.Property(x => x.Id).ValueGeneratedNever();
+			b.Property(x => x.InviteTextTemplate).IsRequired();
+			b.Property<int>("InviterRewardPoints")
+				.IsRequired()
+				.HasDefaultValue(ReferralSettingsDefaults.InviterRewardPoints);
+			b.Property<int>("InvitedUserRewardPoints")
+				.IsRequired()
+				.HasDefaultValue(ReferralSettingsDefaults.InvitedUserRewardPoints);
+		});
+
 		modelBuilder.Entity<Region>(b =>
 		{
 			b.ToTable("regions");
@@ -96,16 +127,23 @@ public sealed class AppDbContext : DbContext
 				t.HasCheckConstraint(
 					"ck_users_role_allowed",
 					$"\"Role\" IN ('{UserRoles.Activist}','{UserRoles.Coordinator}','{UserRoles.Admin}','{UserRoles.Banned}')");
+				t.HasCheckConstraint(
+					"ck_users_referral_code_range",
+					"\"ReferralCode\" >= 100000 AND \"ReferralCode\" <= 999999");
 			});
 
 			b.HasKey(x => x.Id);
 			b.Property(x => x.LastName).IsRequired();
 			b.Property(x => x.FirstName).IsRequired();
 			b.Property(x => x.PhoneNumber).IsRequired();
+			b.Property(x => x.ReferralCode).IsRequired();
 			b.Property(x => x.Role)
 				.IsRequired()
 				.HasDefaultValue(UserRoles.Activist);
 			b.HasIndex(x => x.PhoneNumber).IsUnique();
+			b.HasIndex(x => x.ReferralCode)
+				.IsUnique()
+				.HasDatabaseName("ix_users_referral_code");
 			b.Property(x => x.PasswordHash).IsRequired();
 			b.Property(x => x.AvatarImageUrl);
 			b.Navigation(x => x.OwnedImages);
@@ -119,6 +157,29 @@ public sealed class AppDbContext : DbContext
 				.WithMany()
 				.HasForeignKey(x => x.SettlementId)
 				.OnDelete(DeleteBehavior.Restrict);
+		});
+
+		modelBuilder.Entity<UserReferralInvite>(b =>
+		{
+			b.ToTable("user_referral_invites", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_user_referral_invites_users_not_equal",
+					"\"InviterUserId\" <> \"InvitedUserId\"");
+			});
+
+			b.HasKey(x => x.InvitedUserId);
+			b.HasIndex(x => x.InviterUserId);
+
+			b.HasOne(x => x.InviterUser)
+				.WithMany()
+				.HasForeignKey(x => x.InviterUserId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			b.HasOne(x => x.InvitedUser)
+				.WithMany()
+				.HasForeignKey(x => x.InvitedUserId)
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<UserRating>(b =>
@@ -228,8 +289,8 @@ public sealed class AppDbContext : DbContext
 					$"\"Status\" IN ('{TaskStatusValues.Open}','{TaskStatusValues.Closed}')");
 
 				t.HasCheckConstraint(
-				"ck_tasks_verification_type_allowed",
-				$"\"VerificationType\" IN ('{TaskVerificationType.Auto}','{TaskVerificationType.Manual}')");
+					"ck_tasks_verification_type_allowed",
+					$"\"VerificationType\" IN ('{TaskVerificationType.Auto}','{TaskVerificationType.Manual}')");
 
 				t.HasCheckConstraint(
 					"ck_tasks_reuse_type_allowed",
@@ -237,7 +298,11 @@ public sealed class AppDbContext : DbContext
 
 				t.HasCheckConstraint(
 					"ck_tasks_auto_verification_action_type_allowed",
-					$"(\"VerificationType\" = '{TaskVerificationType.Manual}' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = '{TaskVerificationType.Auto}' AND \"AutoVerificationActionType\" IN ('{TaskAutoVerificationActionType.InviteFriend}','{TaskAutoVerificationActionType.FirstLogin}','{TaskAutoVerificationActionType.Auto}'))");
+					$"(\"VerificationType\" = '{TaskVerificationType.Manual}' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = '{TaskVerificationType.Auto}' AND \"AutoVerificationActionType\" IN ('{TaskAutoVerificationActionType.FirstLogin}','{TaskAutoVerificationActionType.Auto}'))");
+
+				t.HasCheckConstraint(
+					"ck_tasks_first_login_requires_auto_disposable",
+					$"\"AutoVerificationActionType\" IS NULL OR \"AutoVerificationActionType\" <> '{TaskAutoVerificationActionType.FirstLogin}' OR (\"VerificationType\" = '{TaskVerificationType.Auto}' AND \"ReuseType\" = '{TaskReuseType.Disposable}' AND \"DeadlineAt\" IS NULL)");
 			});
 			b.HasKey(x => x.Id);
 

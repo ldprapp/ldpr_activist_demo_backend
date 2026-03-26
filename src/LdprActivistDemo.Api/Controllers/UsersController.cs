@@ -63,6 +63,23 @@ public sealed class UsersController : ControllerBase
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
 	public async Task<ActionResult<UserIdResponse>> Register([FromForm] RegisterUserFormRequest request, CancellationToken cancellationToken)
 	{
+		if(!ModelState.IsValid)
+		{
+			var modelErrors = ModelState
+				.Where(x => x.Value?.Errors.Count > 0)
+				.ToDictionary(
+					x => x.Key,
+					x => x.Value!.Errors
+						.Select(e => string.IsNullOrWhiteSpace(e.ErrorMessage) ? "Invalid value." : e.ErrorMessage)
+						.ToArray());
+
+			return this.ValidationProblemWithCode(
+				ApiErrorCodes.ValidationFailed,
+				modelErrors,
+				title: "Некорректный запрос.",
+				detail: "Проверьте поля формы регистрации.");
+		}
+
 		if(request.AvatarImage is not null)
 		{
 			var avatarValidationError = UploadedImageReader.ValidateImage(request.AvatarImage);
@@ -96,7 +113,8 @@ public sealed class UsersController : ControllerBase
 					BirthDate: request.BirthDate,
 					RegionName: request.RegionName,
 					SettlementName: request.SettlementName,
-					AvatarImageId: null),
+					AvatarImageId: null,
+					ReferralCode: request.ReferralCode),
 				cancellationToken);
 
 			if(request.AvatarImage is not null)
@@ -123,6 +141,10 @@ public sealed class UsersController : ControllerBase
 		catch(InvalidOperationException ex) when(IsGenderInvalid(ex))
 		{
 			return this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.GenderInvalid, "Некорректный пол.", "Допустимые значения: 'male', 'female' или null.");
+		}
+		catch(InvalidOperationException ex) when(IsReferralCodeInvalid(ex))
+		{
+			return this.ProblemWithCode(StatusCodes.Status400BadRequest, ApiErrorCodes.ReferralCodeNotFound, "Некорректный реферальный код.", "Указанный реферальный код не существует.");
 		}
 		catch(Exception)
 		{
@@ -1310,6 +1332,11 @@ public sealed class UsersController : ControllerBase
 		/// Файл аватара пользователя.
 		/// </summary>
 		public IFormFile? AvatarImage { get; set; }
+
+		/// <summary>
+		/// Реферальный код пригласившего пользователя. Опциональное шестизначное число.
+		/// </summary>
+		public int? ReferralCode { get; set; }
 	}
 
 	/// <summary>
@@ -1369,6 +1396,10 @@ public sealed class UsersController : ControllerBase
 		if(string.IsNullOrWhiteSpace(r.Password)) errors[nameof(r.Password)] = new[] { "Password is required." };
 		if(string.IsNullOrWhiteSpace(r.RegionName)) errors[nameof(r.RegionName)] = new[] { "RegionName is required." };
 		if(string.IsNullOrWhiteSpace(r.SettlementName)) errors[nameof(r.SettlementName)] = new[] { "SettlementName is required." };
+		if(r.ReferralCode.HasValue && (r.ReferralCode.Value < 100000 || r.ReferralCode.Value > 999999))
+		{
+			errors[nameof(r.ReferralCode)] = new[] { "ReferralCode must be a six-digit number." };
+		}
 
 		return errors;
 	}
@@ -1436,4 +1467,7 @@ public sealed class UsersController : ControllerBase
 
 	private static bool IsGenderInvalid(InvalidOperationException ex) =>
 		ex.Message.Contains("Gender is invalid", StringComparison.OrdinalIgnoreCase);
+
+	private static bool IsReferralCodeInvalid(InvalidOperationException ex) =>
+		ex.Message.Contains("ReferralCode not found", StringComparison.OrdinalIgnoreCase);
 }

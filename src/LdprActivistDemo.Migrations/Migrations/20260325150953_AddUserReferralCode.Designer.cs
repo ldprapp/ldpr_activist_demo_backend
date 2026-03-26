@@ -3,6 +3,7 @@ using System;
 using LdprActivistDemo.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LdprActivistDemo.Migrations.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260325150953_AddUserReferralCode")]
+    partial class AddUserReferralCode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -44,39 +47,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                     b.HasIndex("OwnerUserId");
 
                     b.ToTable("images", (string)null);
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.ReferralSettingsEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("InviteTextTemplate")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("InvitedUserRewardPoints")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(100);
-
-                    b.Property<int>("InviterRewardPoints")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(100);
-
-                    b.HasKey("Id");
-
-                    b.ToTable("referral_settings", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_referral_settings_invite_text_template_has_code", "position('{code}' in \"InviteTextTemplate\") > 0");
-
-                            t.HasCheckConstraint("ck_referral_settings_invited_user_reward_points_non_negative", "\"InvitedUserRewardPoints\" >= 0");
-
-                            t.HasCheckConstraint("ck_referral_settings_inviter_reward_points_non_negative", "\"InviterRewardPoints\" >= 0");
-
-                            t.HasCheckConstraint("ck_referral_settings_singleton_id", "\"Id\" = 1");
-                        });
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.Region", b =>
@@ -226,7 +196,7 @@ namespace LdprActivistDemo.Migrations.Migrations
 
                     b.ToTable("tasks", null, t =>
                         {
-                            t.HasCheckConstraint("ck_tasks_auto_verification_action_type_allowed", "(\"VerificationType\" = 'manual' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = 'auto' AND \"AutoVerificationActionType\" IN ('first_login','auto'))");
+                            t.HasCheckConstraint("ck_tasks_auto_verification_action_type_allowed", "(\"VerificationType\" = 'manual' AND \"AutoVerificationActionType\" IS NULL) OR (\"VerificationType\" = 'auto' AND \"AutoVerificationActionType\" IN ('invite_friend','first_login','auto'))");
 
                             t.HasCheckConstraint("ck_tasks_first_login_requires_auto_disposable", "\"AutoVerificationActionType\" IS NULL OR \"AutoVerificationActionType\" <> 'first_login' OR (\"VerificationType\" = 'auto' AND \"ReuseType\" = 'disposable' AND \"DeadlineAt\" IS NULL)");
 
@@ -497,24 +467,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         });
                 });
 
-            modelBuilder.Entity("LdprActivistDemo.Persistence.UserReferralInvite", b =>
-                {
-                    b.Property<Guid>("InvitedUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("InviterUserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("InvitedUserId");
-
-                    b.HasIndex("InviterUserId");
-
-                    b.ToTable("user_referral_invites", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_user_referral_invites_users_not_equal", "\"InviterUserId\" <> \"InvitedUserId\"");
-                        });
-                });
-
             modelBuilder.Entity("LdprActivistDemo.Persistence.ImageEntity", b =>
                 {
                     b.HasOne("LdprActivistDemo.Persistence.User", "OwnerUser")
@@ -703,25 +655,6 @@ namespace LdprActivistDemo.Migrations.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("LdprActivistDemo.Persistence.UserReferralInvite", b =>
-                {
-                    b.HasOne("LdprActivistDemo.Persistence.User", "InvitedUser")
-                        .WithMany()
-                        .HasForeignKey("InvitedUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("LdprActivistDemo.Persistence.User", "InviterUser")
-                        .WithMany()
-                        .HasForeignKey("InviterUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("InvitedUser");
-
-                    b.Navigation("InviterUser");
                 });
 
             modelBuilder.Entity("LdprActivistDemo.Persistence.Region", b =>

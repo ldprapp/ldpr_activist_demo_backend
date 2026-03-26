@@ -1,0 +1,3 @@
+﻿namespace LdprActivistDemo.Contracts.Referrals;
+
+public sealed record UpdateReferralInviteTextTemplateRequest(string InviteTextTemplate);

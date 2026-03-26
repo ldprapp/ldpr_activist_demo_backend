@@ -37,6 +37,7 @@ public sealed class UserService : IUserService
 			("PhoneNumber", maskedPhoneNumber),
 			("RegionName", model.RegionName),
 			("SettlementName", model.SettlementName),
+			("HasReferralCode", model.ReferralCode.HasValue),
 		};
 
 		using var scope = _logger.BeginExecutionScope(
@@ -710,6 +711,126 @@ public sealed class UserService : IUserService
 				("Role", result),
 			},
 			("UserId", userId));
+
+	public async Task<UserReferralCodeResult> GetReferralCodeAsync(
+		Guid actorUserId,
+		string actorUserPassword,
+		Guid userId,
+		CancellationToken cancellationToken)
+	{
+		var properties = new (string Name, object? Value)[]
+		{
+			("ActorUserId", actorUserId),
+			("TargetUserId", userId),
+		};
+
+		using var scope = _logger.BeginExecutionScope(
+			DomainLogEvents.User.GetReferralCode,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.Users.GetReferralCode,
+			properties);
+
+		_logger.LogStarted(
+			DomainLogEvents.User.GetReferralCode,
+			LogLayers.ApplicationService,
+			ApplicationLogOperations.Users.GetReferralCode,
+			"User referral code read started.",
+			properties);
+
+		try
+		{
+			if(actorUserId == Guid.Empty || userId == Guid.Empty || string.IsNullOrWhiteSpace(actorUserPassword))
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.GetReferralCode,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.GetReferralCode,
+					"User referral code read rejected by validation.",
+					StructuredLog.Combine(properties, ("Error", UserReferralCodeError.ValidationFailed)));
+
+				return UserReferralCodeResult.Fail(UserReferralCodeError.ValidationFailed);
+			}
+
+			var actorAuth = await _actorAccess.AuthenticateAsync(actorUserId, actorUserPassword, cancellationToken);
+			if(!actorAuth.IsSuccess)
+			{
+				var error = actorAuth.Error == ActorAuthenticationError.ValidationFailed
+					? UserReferralCodeError.ValidationFailed
+					: UserReferralCodeError.InvalidCredentials;
+
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.GetReferralCode,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.GetReferralCode,
+					"User referral code read rejected. Invalid actor credentials.",
+					StructuredLog.Combine(properties, ("Error", error)));
+
+				return UserReferralCodeResult.Fail(error);
+			}
+
+			if(!UserRoleRules.IsAdmin(actorAuth.Actor!.Role) && actorUserId != userId)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.GetReferralCode,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.GetReferralCode,
+					"User referral code read rejected. Actor has no access to target user.",
+					StructuredLog.Combine(properties, ("ActorRole", actorAuth.Actor.Role), ("Error", UserReferralCodeError.Forbidden)));
+
+				return UserReferralCodeResult.Fail(UserReferralCodeError.Forbidden);
+			}
+
+			var referralCode = await _users.GetReferralCodeAsync(userId, cancellationToken);
+			if(referralCode is null)
+			{
+				_logger.LogRejected(
+					LogLevel.Warning,
+					DomainLogEvents.User.GetReferralCode,
+					LogLayers.ApplicationService,
+					ApplicationLogOperations.Users.GetReferralCode,
+					"User referral code read rejected. Target user not found.",
+					StructuredLog.Combine(properties, ("Error", UserReferralCodeError.UserNotFound)));
+
+				return UserReferralCodeResult.Fail(UserReferralCodeError.UserNotFound);
+			}
+
+			_logger.LogCompleted(
+				LogLevel.Information,
+				DomainLogEvents.User.GetReferralCode,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Users.GetReferralCode,
+				"User referral code read completed.",
+				StructuredLog.Combine(properties, ("ActorRole", actorAuth.Actor.Role)));
+
+			return UserReferralCodeResult.Success(referralCode.Value);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.User.GetReferralCode,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Users.GetReferralCode,
+				"User referral code read aborted.",
+				properties);
+			throw;
+		}
+		catch(Exception ex)
+		{
+			_logger.LogFailed(
+				LogLevel.Error,
+				DomainLogEvents.User.GetReferralCode,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Users.GetReferralCode,
+				"User referral code read failed.",
+				ex,
+				properties);
+			throw;
+		}
+	}
 
 	public async Task<UserRoleChangeResult> SetCoordinatorRoleAsync(
 		Guid actorUserId,
