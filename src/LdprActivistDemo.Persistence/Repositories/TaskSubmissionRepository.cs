@@ -599,7 +599,7 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				var taskMeta = await _db.Tasks.AsNoTracking()
 					.Where(x => x.Id == submission.TaskId)
 					.Select(x => new { x.VerificationType, x.Status, x.RewardPoints })
-					 .FirstOrDefaultAsync(cancellationToken);
+					.FirstOrDefaultAsync(cancellationToken);
 
 				if(taskMeta is null)
 				{
@@ -609,11 +609,6 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				if(taskMeta.RewardPoints < 0)
 				{
 					return TaskOperationResult.Fail(TaskOperationError.ValidationFailed);
-				}
-
-				if(string.Equals(taskMeta.Status, TaskStatus.Closed, StringComparison.Ordinal))
-				{
-					return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
 				}
 
 				if(string.Equals(taskMeta.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))
@@ -678,11 +673,6 @@ public sealed class TaskSubmissionRepository : ITaskSubmissionRepository
 				if(taskMeta is null)
 				{
 					return TaskOperationResult.Fail(TaskOperationError.TaskNotFound);
-				}
-
-				if(string.Equals(taskMeta.Status, TaskStatus.Closed, StringComparison.Ordinal))
-				{
-					return TaskOperationResult.Fail(TaskOperationError.TaskClosed);
 				}
 
 				if(string.Equals(taskMeta.VerificationType, TaskVerificationType.Auto, StringComparison.Ordinal))

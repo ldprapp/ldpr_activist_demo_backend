@@ -32,6 +32,7 @@ public sealed class SystemImagesController : ControllerBase
 	/// <response code="200">Системное изображение найдено и возвращено как файл.</response>
 	/// <response code="400">Передано пустое или некорректное имя изображения.</response>
 	/// <response code="404">Системное изображение с указанным именем не найдено.</response>
+	/// <response code="304">Клиент уже имеет актуальную версию изображения по ETag.</response>
 	[HttpGet("{imgName}")]
 	[ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -60,6 +61,11 @@ public sealed class SystemImagesController : ControllerBase
 				StatusCodes.Status404NotFound,
 				ApiErrorCodes.SystemImageNotFound,
 				"Системная картинка не найдена.");
+		}
+
+		if(ImageHttpCacheHelper.IsNotModified(Request, Response, image))
+		{
+			return StatusCode(StatusCodes.Status304NotModified);
 		}
 
 		return File(image.Data, image.ContentType);

@@ -31,6 +31,7 @@ public sealed class ImagesController : ControllerBase
 	/// <response code="200">Изображение найдено и возвращено как файл.</response>
 	/// <response code="400">Передан пустой или некорректный идентификатор изображения.</response>
 	/// <response code="404">Изображение с указанным идентификатором не найдено.</response>
+	/// <response code="304">Клиент уже имеет актуальную версию изображения по ETag.</response>
 	[HttpGet("{id:guid}")]
 	[ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -58,6 +59,11 @@ public sealed class ImagesController : ControllerBase
 				StatusCodes.Status404NotFound,
 				ApiErrorCodes.ImageNotFound,
 				"Картинка не найдена.");
+		}
+
+		if(ImageHttpCacheHelper.IsNotModified(Request, Response, img))
+		{
+			return StatusCode(StatusCodes.Status304NotModified);
 		}
 
 		return File(img.Data, img.ContentType);
