@@ -1,4 +1,5 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.Helpers;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Images.Models;
 using LdprActivistDemo.Contracts.Errors;

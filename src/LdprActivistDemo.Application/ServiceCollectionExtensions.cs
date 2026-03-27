@@ -18,7 +18,6 @@ public static class ServiceCollectionExtensions
 	public static IServiceCollection AddApplication(this IServiceCollection services)
 	{
 		services.AddSingleton<IOtpCodeGenerator, OtpCodeGenerator>();
-		services.AddSingleton<IOtpSender, MockOtpSender>();
 		services.AddScoped<IOtpService, OtpService>();
 
 		services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();

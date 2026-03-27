@@ -11,6 +11,7 @@ using LdprActivistDemo.Persistence;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Serilog;
 
@@ -58,9 +59,23 @@ try
 	builder.Services.AddSingleton<IBackendVersionProvider, BackendVersionProvider>();
 	builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 	builder.Services.Configure<PasswordResetOptions>(builder.Configuration.GetSection("PasswordReset"));
+	builder.Services.Configure<SmsRuOptions>(builder.Configuration.GetSection(SmsRuOptions.SectionName));
 
 	builder.Services.AddApplication();
 	builder.Services.AddPersistence(builder.Configuration);
+	builder.Services.AddHttpClient<IOtpSender, SmsRuOtpSender>((serviceProvider, httpClient) =>
+	{
+		var options = serviceProvider
+			.GetRequiredService<IOptions<SmsRuOptions>>()
+			.Value;
+
+		var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl)
+			? "https://sms.ru"
+			: options.BaseUrl.Trim();
+
+		httpClient.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
+		httpClient.Timeout = TimeSpan.FromSeconds(15);
+	});
 
 	var app = builder.Build();
 

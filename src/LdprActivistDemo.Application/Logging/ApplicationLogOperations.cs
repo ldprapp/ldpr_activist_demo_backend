@@ -50,6 +50,7 @@ public static class ApplicationLogOperations
 		public const string Issue = "otp.issue";
 		public const string Verify = "otp.verify";
 		public const string SendMock = "otp.sender.mock.send";
+		public const string SendSmsRu = "otp.sender.sms_ru.send";
 	}
 
 	public static class PasswordReset

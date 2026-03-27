@@ -47,6 +47,9 @@ services:
 
       Otp__TtlSeconds: ${OTP_TTL_SECONDS}
       Otp__Length: ${OTP_LENGTH}
+      SmsRu__ApiId: ${SMS_RU_API_ID}
+      SmsRu__IsTestMode: ${SMS_RU_IS_TEST_MODE}
+      SmsRu__BaseUrl: ${SMS_RU_BASE_URL}
 
       Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE}
       ApplicationTime__Locale: ${APPLICATION_TIME_LOCALE}
