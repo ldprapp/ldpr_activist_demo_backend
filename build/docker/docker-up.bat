@@ -27,8 +27,36 @@ if /I "%STRUCTURED_LOGGING_FILES_ENABLED%"=="true" if defined STRUCTURED_LOGGING
   if not exist "%STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST%" mkdir "%STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST%" >nul 2>&1
 )
 
+if defined DB_BACKUP_ROOT_PATH_HOST (
+  if not exist "%DB_BACKUP_ROOT_PATH_HOST%" mkdir "%DB_BACKUP_ROOT_PATH_HOST%" >nul 2>&1
+)
+
+if not exist "secrets" (
+  mkdir "secrets" >nul 2>&1
+)
+
+if not defined FIREBASE_PUSH_ENABLED (
+  set "FIREBASE_PUSH_ENABLED=false"
+)
+
+echo Firebase push enabled: %FIREBASE_PUSH_ENABLED%
+
+if /I "%FIREBASE_PUSH_ENABLED%"=="true" (
+  if not exist "secrets\service-account.json" (
+    echo Firebase push is enabled, but "%CD%\secrets\service-account.json" was not found.
+    echo Put your Firebase service account json there and run again.
+    popd
+    exit /b 1
+  )
+  if "%FIREBASE_PUSH_PROJECT_ID%"=="" (
+    echo Firebase push is enabled, but FIREBASE_PUSH_PROJECT_ID is empty in .env
+    popd
+    exit /b 1
+  )
+)
+
 echo [ldpr_activist_demo] Starting...
-docker compose --env-file ".env" -f "docker-compose.yml" up -d postgres redis
+docker compose --env-file ".env" -f "docker-compose.yml" up -d postgres redis postgres-backup
 if errorlevel 1 (
   echo Failed to start infrastructure.
   popd

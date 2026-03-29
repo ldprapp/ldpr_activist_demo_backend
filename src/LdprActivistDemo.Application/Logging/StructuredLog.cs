@@ -185,6 +185,7 @@ public static class StructuredLogDomains
 	public const string Referrals = "referrals";
 	public const string Geo = "geo";
 	public const string Image = "images";
+	public const string Push = "push";
 	public const string Task = "tasks";
 	public const string User = "users";
 	public const string UserPoints = "user_points";

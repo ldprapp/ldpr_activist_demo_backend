@@ -30,6 +30,28 @@ services:
       timeout: 3s
       retries: 30
 
+  postgres-backup:
+    image: postgres:16-alpine
+    user: "0:0"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      BACKUP_ROOT_PATH_CONTAINER: ${DB_BACKUP_ROOT_PATH_CONTAINER}
+      BACKUP_INTERVAL_SECONDS: ${DB_BACKUP_INTERVAL_SECONDS}
+      BACKUP_RETENTION_DAYS: ${DB_BACKUP_RETENTION_DAYS}
+      BACKUP_FILE_PREFIX: ${DB_BACKUP_FILE_PREFIX}
+    volumes:
+      - "${DB_BACKUP_ROOT_PATH_HOST}:${DB_BACKUP_ROOT_PATH_CONTAINER}"
+      - "./scripts:/scripts:ro"
+    entrypoint: ["/bin/sh", "/scripts/postgres-backup-loop.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   api:
     build:
       context: ../..
@@ -50,6 +72,11 @@ services:
       SmsRu__ApiId: ${SMS_RU_API_ID}
       SmsRu__IsTestMode: ${SMS_RU_IS_TEST_MODE}
       SmsRu__BaseUrl: ${SMS_RU_BASE_URL}
+
+      FirebasePush__Enabled: ${FIREBASE_PUSH_ENABLED}
+      FirebasePush__BaseUrl: ${FIREBASE_PUSH_BASE_URL}
+      FirebasePush__ProjectId: ${FIREBASE_PUSH_PROJECT_ID}
+      FirebasePush__ServiceAccountJsonPath: ${FIREBASE_PUSH_SERVICE_ACCOUNT_JSON_PATH}
 
       Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE}
       ApplicationTime__Locale: ${APPLICATION_TIME_LOCALE}
@@ -79,7 +106,7 @@ services:
       - "${API_PORT}:8080"
     volumes:
       - "${STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST}:${STRUCTURED_LOGGING_FILES_ROOT_PATH_CONTAINER}"
-
+      - "./secrets:/run/secrets/firebase:ro"
     depends_on:
       postgres:
         condition: service_healthy

@@ -2,6 +2,7 @@
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
+using LdprActivistDemo.Application.Push;
 using LdprActivistDemo.Application.Referrals;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.UserRatings;
@@ -48,6 +49,8 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IReferralSettingsRepository>(sp =>
 			sp.GetRequiredService<ReferralSettingsRepository>());
 		services.AddScoped<IUserRepository, UserRepository>();
+		services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
+		services.AddScoped<ITaskNotificationReadRepository, TaskNotificationReadRepository>();
 		services.AddScoped<IImageRepository, ImageRepository>();
 		services.AddScoped<LdprActivistDemo.Application.UserPoints.IUserPointsTransactionRepository, UserPointsTransactionRepository>();
 		services.AddScoped<IUserRatingRepository, UserRatingRepository>();

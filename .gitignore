@@ -10,6 +10,12 @@
 *.userosscache
 *.sln.docstates
 
+# Local docker secrets
+**/build/docker/secrets/
+**/build/docker/secrets/**
+**/service-account.json
+**/*service-account*.json
+
 # Local docker-compose overrides (absolute paths, local ports, secrets)
 **/docker-compose.override.local.yml
 **/docker-compose.override.*.local.yml
@@ -23,6 +29,7 @@
 **/appsettings.*.secrets.json
 **/appsettings.Local.json
 **/appsettings.*.Local.json
+**/appsettings.*.private.json
 **/appsettings.Development.json
 
 # User-specific files (MonoDevelop/Xamarin Studio)

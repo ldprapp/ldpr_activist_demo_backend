@@ -118,50 +118,35 @@ public sealed class UserRepository : IUserRepository
 
 	public async Task<bool> DeleteUnconfirmedByPhoneAsync(string phoneNumber, CancellationToken cancellationToken)
 	{
-		var entities = await _db.Users
-		   .Where(x => x.PhoneNumber == phoneNumber && !x.IsPhoneConfirmed)
-		   .ToListAsync(cancellationToken);
+		var deletedCount = await QueryDeletableUnconfirmedUsers()
+			.Where(x => x.PhoneNumber == phoneNumber)
+			.ExecuteDeleteAsync(cancellationToken);
 
-		if(entities.Count == 0)
-		{
-			return false;
-		}
-
-		_db.Users.RemoveRange(entities);
-		await _db.SaveChangesAsync(cancellationToken);
-		return true;
+		return deletedCount > 0;
 	}
 
 	public async Task<bool> DeleteUnconfirmedByIdAsync(Guid userId, CancellationToken cancellationToken)
 	{
-		var entity = await _db.Users
-			.FirstOrDefaultAsync(x => x.Id == userId && !x.IsPhoneConfirmed, cancellationToken);
+		var deletedCount = await QueryDeletableUnconfirmedUsers()
+			.Where(x => x.Id == userId)
+			.ExecuteDeleteAsync(cancellationToken);
 
-		if(entity is null)
-		{
-			return false;
-		}
-
-		_db.Users.Remove(entity);
-		await _db.SaveChangesAsync(cancellationToken);
-		return true;
+		return deletedCount > 0;
 	}
 
 	public async Task<int> DeleteAllUnconfirmedAsync(CancellationToken cancellationToken)
 	{
-		var entities = await _db.Users
-			.Where(x => !x.IsPhoneConfirmed)
-			.ToListAsync(cancellationToken);
-
-		if(entities.Count == 0)
-		{
-			return 0;
-		}
-
-		_db.Users.RemoveRange(entities);
-		await _db.SaveChangesAsync(cancellationToken);
-		return entities.Count;
+		return await QueryDeletableUnconfirmedUsers()
+			.ExecuteDeleteAsync(cancellationToken);
 	}
+
+	private IQueryable<User> QueryDeletableUnconfirmedUsers()
+		=> _db.Users.Where(
+			user =>
+				!user.IsPhoneConfirmed
+				&& !_db.Tasks.Any(task => task.AuthorUserId == user.Id)
+				&& !_db.TaskSubmissions.Any(submission => submission.UserId == user.Id)
+				&& !_db.TaskTrustedCoordinators.Any(link => link.CoordinatorUserId == user.Id));
 
 	public async Task<Guid> CreateAsync(UserCreateModel model, CancellationToken cancellationToken)
 	{

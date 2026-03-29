@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Referrals;
 using LdprActivistDemo.Application.Users.Models;
+using LdprActivistDemo.Contracts.Push;
 using LdprActivistDemo.Contracts.Tasks;
 
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,7 @@ public sealed class AppDbContext : DbContext
 	public DbSet<Region> Regions => Set<Region>();
 	public DbSet<Settlement> Settlements => Set<Settlement>();
 	public DbSet<User> Users => Set<User>();
+	public DbSet<UserPushDevice> UserPushDevices => Set<UserPushDevice>();
 	public DbSet<ReferralSettingsEntity> ReferralSettings => Set<ReferralSettingsEntity>();
 	public DbSet<UserReferralInvite> UserReferralInvites => Set<UserReferralInvite>();
 	public DbSet<UserRating> UserRatings => Set<UserRating>();
@@ -157,6 +159,35 @@ public sealed class AppDbContext : DbContext
 				.WithMany()
 				.HasForeignKey(x => x.SettlementId)
 				.OnDelete(DeleteBehavior.Restrict);
+		});
+
+		modelBuilder.Entity<UserPushDevice>(b =>
+		{
+			b.ToTable("user_push_devices", t =>
+			{
+				t.HasCheckConstraint(
+					"ck_user_push_devices_platform_allowed",
+					$"\"Platform\" IN ('{PushPlatform.Android}','{PushPlatform.Ios}','{PushPlatform.Web}')");
+			});
+
+			b.HasKey(x => x.Id);
+			b.Property(x => x.UserId).IsRequired();
+			b.Property(x => x.Token).IsRequired();
+			b.Property(x => x.Platform).IsRequired();
+			b.Property(x => x.IsActive)
+				.IsRequired()
+				.HasDefaultValue(true);
+			b.Property(x => x.CreatedAtUtc).IsRequired();
+			b.Property(x => x.UpdatedAtUtc).IsRequired();
+
+			b.HasIndex(x => x.Token).IsUnique();
+			b.HasIndex(x => x.UserId);
+			b.HasIndex(x => new { x.UserId, x.IsActive });
+
+			b.HasOne(x => x.User)
+				.WithMany(x => x.PushDevices)
+				.HasForeignKey(x => x.UserId)
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<UserReferralInvite>(b =>

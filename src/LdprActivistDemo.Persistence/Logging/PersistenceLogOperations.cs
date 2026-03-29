@@ -124,4 +124,19 @@ public static class PersistenceLogOperations
 		public const string GetFeed = "user_ratings.feed.get";
 		public const string GetUserRanks = "user_ratings.user.get";
 	}
+
+	public static class PushDevices
+	{
+		public const string Upsert = "push.device.upsert";
+		public const string Deactivate = "push.device.deactivate";
+		public const string DeactivateMany = "push.device.deactivate_many";
+		public const string GetTargetsByUser = "push.targets.by_user";
+		public const string GetTargetsByGeo = "push.targets.by_geo";
+	}
+
+	public static class PushNotificationContext
+	{
+		public const string GetTaskCreated = "push.context.task_created.get";
+		public const string GetSubmissionDecision = "push.context.submission_decision.get";
+	}
 }

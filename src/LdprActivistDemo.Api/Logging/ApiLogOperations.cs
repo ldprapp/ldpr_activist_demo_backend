@@ -56,6 +56,12 @@ public static class ApiLogOperations
 		public const string RestoreSettlement = "geo.settlement.restore";
 	}
 
+	public static class Push
+	{
+		public const string RegisterDevice = "push.device.register";
+		public const string DeactivateDevice = "push.device.deactivate";
+	}
+
 	public static class Tasks
 	{
 		public const string Create = "tasks.create";

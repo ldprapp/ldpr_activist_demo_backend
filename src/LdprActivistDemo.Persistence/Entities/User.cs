@@ -37,4 +37,6 @@ public sealed class User
 	public string? AvatarImageUrl { get; set; }
 
 	public List<ImageEntity> OwnedImages { get; set; } = new();
+
+	public List<UserPushDevice> PushDevices { get; set; } = new();
 }

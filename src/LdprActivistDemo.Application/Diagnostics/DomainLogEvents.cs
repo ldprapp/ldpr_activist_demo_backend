@@ -188,6 +188,29 @@ public static class DomainLogEvents
 		public const string SetInvitedUserRewardPoints = Service.SetInvitedUserRewardPoints;
 	}
 
+	public static class Push
+	{
+		public static class Service
+		{
+			public const string RegisterDevice = "push.service.device.register";
+			public const string DeactivateDevice = "push.service.device.deactivate";
+			public const string NotifyTaskCreated = "push.service.notify.task_created";
+			public const string NotifySubmissionApproved = "push.service.notify.submission_approved";
+			public const string NotifySubmissionRejected = "push.service.notify.submission_rejected";
+		}
+
+		public static class Sender
+		{
+			public const string Send = "push.sender.send";
+		}
+
+		public const string RegisterDevice = Service.RegisterDevice;
+		public const string DeactivateDevice = Service.DeactivateDevice;
+		public const string NotifyTaskCreated = Service.NotifyTaskCreated;
+		public const string NotifySubmissionApproved = Service.NotifySubmissionApproved;
+		public const string NotifySubmissionRejected = Service.NotifySubmissionRejected;
+	}
+
 	public static class Task
 	{
 		public static class Service

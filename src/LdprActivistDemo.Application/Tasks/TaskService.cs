@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Application.Diagnostics;
 using LdprActivistDemo.Application.Logging;
+using LdprActivistDemo.Application.Push;
 using LdprActivistDemo.Application.Tasks.Models;
 using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Application.Users.Models;
@@ -13,13 +14,20 @@ public sealed class TaskService : ITaskService
 	private readonly ITaskRepository _tasks;
 	private readonly ITaskSubmissionRepository _submissions;
 	private readonly IActorAccessService _actorAccess;
+	private readonly ITaskPushNotificationService _taskPushNotifications;
 	private readonly ILogger<TaskService> _logger;
 
-	public TaskService(ITaskRepository tasks, ITaskSubmissionRepository submissions, IActorAccessService actorAccess, ILogger<TaskService> logger)
+	public TaskService(
+		ITaskRepository tasks,
+		ITaskSubmissionRepository submissions,
+		IActorAccessService actorAccess,
+		ITaskPushNotificationService taskPushNotifications,
+		ILogger<TaskService> logger)
 	{
 		_tasks = tasks ?? throw new ArgumentNullException(nameof(tasks));
 		_submissions = submissions ?? throw new ArgumentNullException(nameof(submissions));
 		_actorAccess = actorAccess ?? throw new ArgumentNullException(nameof(actorAccess));
+		_taskPushNotifications = taskPushNotifications ?? throw new ArgumentNullException(nameof(taskPushNotifications));
 		_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 	}
 
@@ -47,9 +55,18 @@ public sealed class TaskService : ITaskService
 			async () =>
 			{
 				var authError = await TryAuthenticateActorAsync(actorUserId, actorUserPassword, cancellationToken);
-				return authError is null
-					? await _tasks.CreateAsync(actorUserId, model, cancellationToken)
-					: TaskOperationResult<Guid>.Fail(authError.Value);
+				if(authError is not null)
+				{
+					return TaskOperationResult<Guid>.Fail(authError.Value);
+				}
+
+				var result = await _tasks.CreateAsync(actorUserId, model, cancellationToken);
+				if(result.IsSuccess && result.Value != Guid.Empty)
+				{
+					await TryNotifyTaskCreatedAsync(result.Value, cancellationToken);
+				}
+
+				return result;
 			},
 			cancellationToken,
 			("ActorUserId", actorUserId),
@@ -296,9 +313,23 @@ public sealed class TaskService : ITaskService
 			async () =>
 			{
 				var authError = await TryAuthenticateActorAsync(actorUserId, actorPassword, cancellationToken);
-				return authError is null
-					? await _submissions.ApproveAsync(actorUserId, submissionId, DateTimeOffset.UtcNow, cancellationToken)
-					: TaskOperationResult.Fail(authError.Value);
+				if(authError is not null)
+				{
+					return TaskOperationResult.Fail(authError.Value);
+				}
+
+				var result = await _submissions.ApproveAsync(
+					actorUserId,
+					submissionId,
+					DateTimeOffset.UtcNow,
+					cancellationToken);
+
+				if(result.IsSuccess)
+				{
+					await TryNotifySubmissionApprovedAsync(submissionId, cancellationToken);
+				}
+
+				return result;
 			},
 			cancellationToken,
 			("ActorUserId", actorUserId), ("SubmissionId", submissionId));
@@ -312,9 +343,23 @@ public sealed class TaskService : ITaskService
 			async () =>
 			{
 				var authError = await TryAuthenticateActorAsync(actorUserId, actorPassword, cancellationToken);
-				return authError is null
-					? await _submissions.RejectAsync(actorUserId, submissionId, DateTimeOffset.UtcNow, cancellationToken)
-					: TaskOperationResult.Fail(authError.Value);
+				if(authError is not null)
+				{
+					return TaskOperationResult.Fail(authError.Value);
+				}
+
+				var result = await _submissions.RejectAsync(
+					actorUserId,
+					submissionId,
+					DateTimeOffset.UtcNow,
+					cancellationToken);
+
+				if(result.IsSuccess)
+				{
+					await TryNotifySubmissionRejectedAsync(submissionId, cancellationToken);
+				}
+
+				return result;
 			},
 			cancellationToken,
 			("ActorUserId", actorUserId), ("SubmissionId", submissionId));
@@ -513,6 +558,96 @@ public sealed class TaskService : ITaskService
 			},
 			cancellationToken,
 			("ActorUserId", actorUserId), ("TaskId", taskId), ("TaskStatus", taskStatus));
+	}
+
+	private async Task TryNotifyTaskCreatedAsync(
+		Guid taskId,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			await _taskPushNotifications.NotifyTaskCreatedAsync(taskId, cancellationToken);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.Push.NotifyTaskCreated,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Push.NotifyTaskCreated,
+				"Task created push notification aborted after successful task creation.",
+				("TaskId", taskId));
+		}
+		catch(Exception)
+		{
+			_logger.LogRejected(
+				LogLevel.Warning,
+				DomainLogEvents.Push.NotifyTaskCreated,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Push.NotifyTaskCreated,
+				"Task created push notification failed after successful task creation. Task creation result remains successful.",
+				("TaskId", taskId));
+		}
+	}
+
+	private async Task TryNotifySubmissionApprovedAsync(
+		Guid submissionId,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			await _taskPushNotifications.NotifySubmissionApprovedAsync(submissionId, cancellationToken);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.Push.NotifySubmissionApproved,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Push.NotifySubmissionApproved,
+				"Submission approved push notification aborted after successful approve operation.",
+				("SubmissionId", submissionId));
+		}
+		catch(Exception)
+		{
+			_logger.LogRejected(
+				LogLevel.Warning,
+				DomainLogEvents.Push.NotifySubmissionApproved,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Push.NotifySubmissionApproved,
+				"Submission approved push notification failed after successful approve operation. Approve result remains successful.",
+				("SubmissionId", submissionId));
+		}
+	}
+
+	private async Task TryNotifySubmissionRejectedAsync(
+		Guid submissionId,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			await _taskPushNotifications.NotifySubmissionRejectedAsync(submissionId, cancellationToken);
+		}
+		catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogAborted(
+				LogLevel.Information,
+				DomainLogEvents.Push.NotifySubmissionRejected,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Push.NotifySubmissionRejected,
+				"Submission rejected push notification aborted after successful reject operation.",
+				("SubmissionId", submissionId));
+		}
+		catch(Exception)
+		{
+			_logger.LogRejected(
+				LogLevel.Warning,
+				DomainLogEvents.Push.NotifySubmissionRejected,
+				LogLayers.ApplicationService,
+				ApplicationLogOperations.Push.NotifySubmissionRejected,
+				"Submission rejected push notification failed after successful reject operation. Reject result remains successful.",
+				("SubmissionId", submissionId));
+		}
 	}
 
 	private async Task<TaskOperationError?> TryAuthenticateActorAsync(

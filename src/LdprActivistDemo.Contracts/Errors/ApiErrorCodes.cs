@@ -46,5 +46,9 @@ public static class ApiErrorCodes
 	public const string UserPointsInsufficientBalance = "user_points_insufficient_balance";
 	public const string UserPointsTransactionNotFound = "user_points_transaction_not_found";
 
+	public const string PushDeviceNotFound = "push_device_not_found";
+	public const string PushPlatformInvalid = "push_platform_invalid";
+	public const string PushTokenInvalid = "push_token_invalid";
+
 	public const string InternalError = "internal_error";
 }

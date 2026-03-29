@@ -11,7 +11,11 @@
         "ApplicationTime__Locale": "ru-RU",
         "SmsRu__ApiId": "",
         "SmsRu__IsTestMode": "true",
-        "SmsRu__BaseUrl": "https://sms.ru"
+        "SmsRu__BaseUrl": "https://sms.ru",
+        "FirebasePush__Enabled": "true",
+        "FirebasePush__BaseUrl": "https://fcm.googleapis.com",
+        "FirebasePush__ProjectId": "",
+        "FirebasePush__ServiceAccountJsonPath": ""
       }
     }
   }

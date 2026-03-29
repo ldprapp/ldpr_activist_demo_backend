@@ -2,6 +2,7 @@
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
+using LdprActivistDemo.Application.Push;
 using LdprActivistDemo.Application.Referrals;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.UserPoints;
@@ -21,10 +22,18 @@ public static class ServiceCollectionExtensions
 		services.AddScoped<IOtpService, OtpService>();
 
 		services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
+		services.AddSingleton(new System.Net.Http.HttpClient
+		{
+			Timeout = System.TimeSpan.FromSeconds(15),
+		});
+		services.AddSingleton<IFirebaseAccessTokenProvider, FirebaseAccessTokenProvider>();
+		services.AddSingleton<IPushNotificationSender, FirebasePushNotificationSender>();
 
 		services.AddScoped<IPasswordResetService, PasswordResetService>();
 
 		services.AddScoped<IActorAccessService, ActorAccessService>();
+		services.AddScoped<IPushDeviceService, PushDeviceService>();
+		services.AddScoped<ITaskPushNotificationService, TaskPushNotificationService>();
 		services.AddScoped<IReferralService, ReferralService>();
 		services.AddScoped<IReferralRewardSettingsService, ReferralRewardSettingsService>();
 		services.AddScoped<IGeoDirectoryService, GeoDirectoryService>();

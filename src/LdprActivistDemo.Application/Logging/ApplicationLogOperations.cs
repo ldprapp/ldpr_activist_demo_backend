@@ -59,6 +59,17 @@ public static class ApplicationLogOperations
 		public const string Confirm = "password_reset.confirm";
 	}
 
+	public static class Push
+	{
+		public const string RegisterDevice = "push.device.register";
+		public const string DeactivateDevice = "push.device.deactivate";
+		public const string NotifyTaskCreated = "push.notify.task_created";
+		public const string NotifySubmissionApproved = "push.notify.submission_approved";
+		public const string NotifySubmissionRejected = "push.notify.submission_rejected";
+		public const string SendNoOp = "push.sender.noop.send";
+		public const string DeactivateInvalidTokens = "push.invalid_tokens.deactivate";
+	}
+
 	public static class Tasks
 	{
 		public const string ValidateActor = "tasks.actor.validate";

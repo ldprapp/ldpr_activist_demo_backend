@@ -3,8 +3,8 @@ setlocal EnableExtensions
 
 pushd "%~dp0" || exit /b 1
 
-echo [ldpr_activist_demo] Stopping...
-docker compose -f "docker-compose.yml" down
+echo [ldpr_activist_demo] Stopping all services (including postgres-backup) without removing containers...
+docker compose --env-file ".env" -f "docker-compose.yml" stop
 if errorlevel 1 (
   echo Failed to stop.
   popd
