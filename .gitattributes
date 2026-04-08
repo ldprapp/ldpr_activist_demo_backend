@@ -1,0 +1,10 @@
+# Docker / shell scripts must always use LF, otherwise Alpine /bin/sh
+# may fail with errors like: "set: line 2: illegal option -"
+build/docker/scripts/*.sh text eol=lf
+
+# Keep Windows batch files in CRLF.
+build/docker/*.bat text eol=crlf
+
+# Docker-related text files should also stay in LF.
+build/docker/Dockerfile text eol=lf
+build/docker/nginx/*.conf text eol=lf

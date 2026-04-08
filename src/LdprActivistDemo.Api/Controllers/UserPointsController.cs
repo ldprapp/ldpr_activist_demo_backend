@@ -1,10 +1,12 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.UserPoints;
 using LdprActivistDemo.Application.UserPoints.Models;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.UserPoints;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -141,6 +143,7 @@ public sealed class UserPointsController : ControllerBase
 	/// <response code="403">Пользователь не имеет права создавать транзакции баллов.</response>
 	/// <response code="404">Пользователь не найден.</response>
 	[HttpPost("transactions")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(typeof(CreateUserPointsTransactionResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -239,6 +242,7 @@ public sealed class UserPointsController : ControllerBase
 	/// Операция доступна только администратору.
 	/// </remarks>
 	[HttpPost("~/api/v1/user-points/transactions/{transactionId:guid}/cancel")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -300,6 +304,7 @@ public sealed class UserPointsController : ControllerBase
 	/// Операция доступна только администратору.
 	/// </remarks>
 	[HttpPost("~/api/v1/user-points/transactions/{transactionId:guid}/restore")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

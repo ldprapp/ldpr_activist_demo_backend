@@ -12,6 +12,7 @@
         "SmsRu__ApiId": "",
         "SmsRu__IsTestMode": "true",
         "SmsRu__BaseUrl": "https://sms.ru",
+        "RateLimiting__Enabled": "false",
         "FirebasePush__Enabled": "true",
         "FirebasePush__BaseUrl": "https://fcm.googleapis.com",
         "FirebasePush__ProjectId": "",

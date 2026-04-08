@@ -1,4 +1,5 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Api.Time;
 using LdprActivistDemo.Application.UserRatings;
 using LdprActivistDemo.Application.UserRatings.Models;
@@ -6,6 +7,7 @@ using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.UserRatings;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace LdprActivistDemo.Api.Controllers;
@@ -164,6 +166,7 @@ public sealed class UserRatingsController : ControllerBase
 	/// Операция доступна только пользователю с ролью <c>admin</c>.
 	/// </remarks>
 	[HttpPut("refresh/schedule")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(typeof(UserRatingsRefreshScheduleResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -234,6 +237,7 @@ public sealed class UserRatingsController : ControllerBase
 	/// Операция доступна только пользователю с ролью <c>admin</c>.
 	/// </remarks>
 	[HttpPost("refresh/run")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(typeof(RunUserRatingsRefreshResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

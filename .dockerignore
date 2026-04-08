@@ -6,3 +6,22 @@
 **/*.suo
 src/production/**/identity.env
 src/production/**/infra.env
+
+# Docker local/prod env files
+build/docker/.env
+build/docker/.env.local
+build/docker/.env.production
+build/docker/.env.*
+
+# Allow committed templates
+!build/docker/.env.local.template
+!build/docker/.env.production.template
+!build/docker/.env.example
+!build/docker/.env.local.example
+!build/docker/.env.production.example
+
+# Docker secrets and release artifacts
+build/docker/secrets/
+build/docker/.release/
+build/docker/backups/
+**/*service-account*.json

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT_PUBLIC}:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_PORT_PUBLIC}:6379"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: build/docker/Dockerfile
+      args:
+        DOTNET_VERSION: ${DOTNET_VERSION}
+        APP_PROJECT: ${APP_PROJECT}
+    image: ${API_IMAGE_NAME}:${API_IMAGE_TAG}
+
+  nginx:
+    ports:
+      - "127.0.0.1:${API_PORT}:80"

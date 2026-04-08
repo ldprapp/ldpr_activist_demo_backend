@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Api.Errors;
 using LdprActivistDemo.Api.Helpers;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
@@ -9,6 +10,7 @@ using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Users;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -56,6 +58,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="409">Пользователь с таким номером телефона уже существует.</response>
 	/// <response code="500">Произошла внутренняя ошибка сервера.</response>
 	[HttpPost("register")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.PublicAuthentication)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(UserIdResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -164,6 +167,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="400">Передан пустой или некорректный номер телефона.</response>
 	/// <response code="500">Не удалось отправить OTP-код.</response>
 	[HttpPost("send-otp")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.PublicAuthentication)]
 	[ProducesResponseType(typeof(SendOtpResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
@@ -239,6 +243,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="409">Телефон пользователя ещё не подтверждён.</response>
 	/// <response code="500">Произошла внутренняя ошибка или не удалось отправить OTP.</response>
 	[HttpPost("password-reset/request")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.PublicAuthentication)]
 	[ProducesResponseType(typeof(RequestPasswordResetResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -324,6 +329,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="409">Телефон не подтверждён или запрос на сброс пароля уже истёк.</response>
 	/// <response code="500">Произошла внутренняя ошибка сервера.</response>
 	[HttpPost("password-reset/confirm")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.PublicOtpConfirmation)]
 	[ProducesResponseType(typeof(ConfirmPasswordResetResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -412,6 +418,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="400">Переданы некорректные данные запроса или неверный OTP-код.</response>
 	/// <response code="409">Телефон уже был подтверждён ранее.</response>
 	[HttpPost("confirm-phone")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.PublicOtpConfirmation)]
 	[ProducesResponseType(typeof(ConfirmPhoneResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
@@ -478,6 +485,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="401">Номер телефона не найден или пароль неверный.</response>
 	/// <response code="409">Телефон найден, но ещё не подтверждён.</response>
 	[HttpPost("login")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.PublicAuthentication)]
 	[ProducesResponseType(typeof(LoginOkResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -599,6 +607,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
 	/// <response code="404">Пользователь не найден.</response>
 	[HttpPut("{id:guid}/password")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -676,6 +685,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="404">Пользователь не найден.</response>
 	/// <response code="409">Обновление не удалось из-за конфликта данных.</response>
 	[HttpPut("{id:guid}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -781,6 +791,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="404">Пользователь не найден.</response>
 	/// <response code="409">Новый номер телефона уже занят.</response>
 	[HttpPut("{id:guid}/phone")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -971,6 +982,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="404">Пользователь не найден.</response>
 	/// <response code="409">Изменение роли запрещено правилами системы.</response>
 	[HttpPut("{id:guid}/role/coordinator")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -1010,6 +1022,7 @@ public sealed class UsersController : ControllerBase
 	/// <response code="404">Пользователь не найден.</response>
 	/// <response code="409">Изменение роли запрещено правилами системы.</response>
 	[HttpDelete("{id:guid}/role/coordinator")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -1033,6 +1046,7 @@ public sealed class UsersController : ControllerBase
 	}
 
 	[HttpPut("{id:guid}/role/banned")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -1056,6 +1070,7 @@ public sealed class UsersController : ControllerBase
 	}
 
 	[HttpDelete("{id:guid}/role/banned")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

@@ -10,11 +10,39 @@
 *.userosscache
 *.sln.docstates
 
+# Docker env files
+# Real environment files must stay local / on server only.
+**/build/docker/.env
+**/build/docker/.env.local
+**/build/docker/.env.production
+**/build/docker/.env.staging
+**/build/docker/.env.private
+**/build/docker/.env.*
+
+# Committed templates/examples are allowed.
+!**/build/docker/.env.template
+!**/build/docker/.env.local.template
+!**/build/docker/.env.production.template
+!**/build/docker/.env.staging.template
+!**/build/docker/.env.example
+!**/build/docker/.env.local.example
+!**/build/docker/.env.production.example
+
 # Local docker secrets
 **/build/docker/secrets/
 **/build/docker/secrets/**
 **/service-account.json
 **/*service-account*.json
+
+# Local release / deployment artifacts
+**/build/docker/.release/
+**/build/docker/backups/
+**/build/docker/*.tar
+**/build/docker/*.tar.gz
+**/build/docker/*.tgz
+**/build/docker/*.zip
+**/build/docker/*.sha256
+**/build/docker/*.sha256.txt
 
 # Local docker-compose overrides (absolute paths, local ports, secrets)
 **/docker-compose.override.local.yml

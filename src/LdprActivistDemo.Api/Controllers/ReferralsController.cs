@@ -1,4 +1,5 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Referrals;
 using LdprActivistDemo.Application.Referrals.Models;
 using LdprActivistDemo.Application.Users.Models;
@@ -7,6 +8,7 @@ using LdprActivistDemo.Contracts.Referrals;
 using LdprActivistDemo.Contracts.Users;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -212,6 +214,7 @@ public sealed class ReferralsController : ControllerBase
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
 	/// <response code="403">Операция доступна только администратору.</response>
 	[HttpPut("settings")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(typeof(ReferralSettingsResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

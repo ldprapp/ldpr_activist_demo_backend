@@ -1,105 +1,214 @@
-# LDPR Activist Backend
+# LDPR Activist Demo Backend
 
-Бэкенд-платформа (микросервисы на .NET 10) для проекта LDPR Activist.
+Демо-бэкенд для проекта **LDPR Activist**, построенный на **.NET 10**, **ASP.NET Core Web API**, **EF Core**, **PostgreSQL**, **Redis** и **Docker**.
 
-## Состав сервисов
+Проект организован как одно решение из нескольких прикладных слоёв:
 
-Репозиторий содержит несколько сервисов, каждый реализован “пачкой” проектов (API / Contracts / Client / Infrastructure / Domain):
-
-- **Identity Service** (`src/ldpractivist.identity.service`)
-  - Аутентификация/авторизация, JWT, учетные записи, refresh-сессии, аудит-события.
-  - В текущем коде реализован endpoint: `GET /health`.
-
-- **Organization Service** (`src/ldpractivist.organization.service`)
-  - Доменные данные организаций (каркас проектов присутствует).
-
-- **Points Service** (`src/ldpractivist.points.service`)
-  - Доменные данные “точек/пунктов” (каркас проектов присутствует).
-
-- **Tasks Service** (`src/ldpractivist.tasks.service`)
-  - Доменные данные задач (каркас проектов присутствует).
-  - Примечание: в текущем дереве есть опечатка в названии Contracts-проекта: `contrtacts` (как в папках/сборках).
-
-- **ldpractivist.service** (`src/ldpractivist.service`)
-  - Общий сервис/публичное API (каркас проектов присутствует).
+- `LdprActivistDemo.Api` — HTTP API, middleware, startup, DI root.
+- `LdprActivistDemo.Application` — прикладная логика, сервисы и контракты между API и persistence-слоем.
+- `LdprActivistDemo.Persistence` — `DbContext`, репозитории, Redis/in-memory store, доступ к PostgreSQL.
+- `LdprActivistDemo.Contracts` — DTO и публичные API-контракты.
+- `LdprActivistDemo.Migrations` — EF Core migrations и SQL-артефакты, связанные со схемой базы данных.
 
 ## Структура решения
 
-Корень: `src/LDPRActivist.slnx`
+Корень решения:
 
-Типовая структура одного сервиса:
+- `LDPRActivistDEMO.slnx`
 
-- `*.service.api.prj` — ASP.NET Core API (эндпоинты, middleware, DI root).
-- `*.service.prj` — доменная логика/ядро сервиса.
-- `*.service.infrastructure.prj` — инфраструктура (EF Core, Postgres, Redis, внешние интеграции).
-- `*.service.contracts.prj` — DTO/контракты и JSON source generation (если нужно).
-- `*.service.client.prj` — клиентская библиотека для вызова сервиса из других сервисов.
+Основные проекты:
 
-Общий код:
-- `src/ldpractivist.common` — общие соглашения/утилиты (в т.ч. соглашения по внешним конфигам).
+- `LdprActivistDemo.Api`
+- `LdprActivistDemo.Application`
+- `LdprActivistDemo.Contracts`
+- `LdprActivistDemo.Migrations`
+- `LdprActivistDemo.Persistence`
 
-Production-артефакты:
-- `src/production/**` — docker-compose, Dockerfile, шаблоны конфигов/SQL.
+Инфраструктура запуска и деплоя:
 
-Скрипты разработчика:
-- `build/docker/*.bat` — удобные команды для поднятия/остановки docker окружения (локально).
-- `src/tools/dev/Generate-PostgresInit-Identity.ps1` — генерация init-скриптов для Postgres (Identity).
+- `build/docker/` — Dockerfile, compose-файлы, `.env`-файлы, `.bat`-скрипты, shell-скрипты бэкапа, nginx-конфиг.
 
-## Быстрый старт (локальная разработка)
+Документация:
+
+- `doc/ldpr_activist_demo_spec.md` — спецификация демо-бэкенда.
+- `doc/docker-scripts.md` — описание docker-скриптов проекта.
+- `doc/deployment-guide.md` — пошаговая инструкция по деплою release bundle на сервер.
+- `doc/runtime-artifacts.md` — бэкапы, логи, runtime-артефакты и работа с ними.
+
+## Основные возможности
+
+На текущий момент репозиторий содержит backend для следующих сценариев:
+
+- регистрация и аутентификация пользователей;
+- OTP и password reset;
+- справочник регионов и населённых пунктов;
+- задания и отправка подтверждений выполнения;
+- реферальная система;
+- транзакции пользовательских баллов;
+- рейтинги пользователей;
+- загрузка пользовательских и системных изображений;
+- push-уведомления через Firebase;
+- rate limiting;
+- health/version endpoints;
+- production-ready docker-окружение с PostgreSQL, Redis, nginx и сервисом автоматических бэкапов PostgreSQL.
+
+## Быстрый старт для локальной разработки
 
 ### Предварительные требования
 
 - .NET SDK 10
-- Docker + Docker Compose (если поднимаешь Postgres/Redis в контейнерах)
+- Docker Desktop / Docker Engine
+- Docker Compose v2
 
-### Запуск Identity API
+### Локальный запуск через Docker
 
-1) Убедись, что доступен Postgres и Redis.
-   - Пример dev-конфига в `src/ldpractivist.identity.service/ldpractivist.identity.service.api.prj/appsettings.Development.json`:
-     - Postgres: `Host=localhost;Port=5433;Database=ldpr_identity;Username=ldpr_identity_user;Password=identity_dev_password`
-     - Redis: `localhost:6379`
+1. Перейди в каталог:
 
-2) Обязательно задай JWT настройки (иначе сервис упадёт при старте из-за валидации опций):
-   - `Jwt:Issuer`
-   - `Jwt:Audience`
-   - `Jwt:SigningKey` (минимум 32 байта UTF-8)
-   - `Jwt:AccessTokenMinutes` (1..1440)
-   - `Jwt:RefreshTokenDays` (1..365)
+   `build/docker`
 
-   Удобнее всего задать через внешний конфиг (см. раздел “Конфигурация” ниже) или переменные окружения.
+2. Убедись, что существует файл:
 
-3) Запуск:
-   - из папки `src/ldpractivist.identity.service/ldpractivist.identity.service.api.prj`:
-     - `dotnet run`
+   `.env.local`
 
-4) Проверка:
-   - `GET http://localhost:5101/health`
+   Если его нет — создай из шаблона:
 
-## Конфигурация (важно)
+   `.env.local.template`
 
-Identity Service подхватывает внешний конфиг-файл:
-- имя файла: `ldpractivist.identity.service.config.json`
-- переменная окружения с путём к директории: `LDPR_CONFIG_DIR`
-- стандартные директории (см. `LdprIdentityConfigConventions` в common)
+3. Если в `.env.local` включён Firebase push:
 
-Приоритет источников конфигурации:
-- `appsettings*.json` (в проекте API)
-- внешний JSON-конфиг
-- переменные окружения
-- аргументы командной строки
+   `FIREBASE_PUSH_ENABLED=true`
 
-Подробно: см. `docs/configuration.md`.
+   то положи файл:
 
-## Миграции (Identity)
+   `build/docker/secrets/service-account.json`
 
-Используется `dotnet-ef` (см. `src/dotnet-tools.json`).
+4. Запусти окружение:
 
-Подробная инструкция (создание/применение): см. `docs/migrations-identity.md`.
+   `docker-up.bat`
 
-## Production / Docker
+5. После успешного старта API будет доступен через nginx reverse proxy:
 
-В `src/production/**` лежат готовые заготовки для деплоя:
-- `ldpractivist.infra/Docker/docker-compose.yml` + шаблоны SQL/паролей
-- папки сервисов: `*/Config` и `*/Docker`
+   `http://localhost:8080`
 
-Подробно: см. `docs/deployment.md`.
+   Значение порта берётся из:
+
+   `API_PORT` в `.env.local`
+
+### Проверка запуска
+
+Health endpoint:
+
+- `GET /api/v1/health`
+
+Пример:
+
+`http://localhost:8080/api/v1/health`
+
+## Локальные docker-скрипты
+
+В каталоге `build/docker` находятся основные скрипты разработчика:
+
+- `docker-up.bat` — поднять локальное окружение;
+- `docker-down.bat` — остановить локальное окружение без удаления контейнеров и volumes;
+- `docker-clean.bat` — полный reset локального docker-окружения;
+- `docker-backup-now.bat` — вручную запустить локальный PostgreSQL backup;
+- `docker-release-image.bat` — собрать production image и сформировать release bundle;
+- `docker-backup-now.prod.bat` — вручную выполнить backup для production-конфигурации.
+
+Подробно они описаны в:
+
+- `doc/docker-scripts.md`
+
+## Конфигурация
+
+Основные конфигурационные файлы для Docker:
+
+- `build/docker/.env.local`
+- `build/docker/.env.local.template`
+- `build/docker/.env.production`
+- `build/docker/.env.production.template`
+
+Через них настраиваются:
+
+- PostgreSQL;
+- Redis;
+- порт nginx;
+- auto-migrate;
+- rate limiting;
+- structured logging;
+- Firebase push;
+- пути логов и бэкапов;
+- имя и тег production image.
+
+Для API docker-compose пробрасывает настройки через переменные окружения в стандартный .NET configuration pipeline.
+
+## Миграции базы данных
+
+За схему базы данных отвечает проект:
+
+- `LdprActivistDemo.Migrations`
+
+В нём находятся:
+
+- EF Core migrations;
+- `AppDbContextModelSnapshot`;
+- дополнительные SQL-артефакты, например trigger-скрипты.
+
+В локальной среде обычно используется:
+
+- `DATABASE_AUTO_MIGRATE=true`
+
+В production по умолчанию:
+
+- `DATABASE_AUTO_MIGRATE=false`
+
+Это поведение задаётся в соответствующих `.env`-файлах.
+
+## Production / release / deployment
+
+Production release собирается через:
+
+- `build/docker/docker-release-image.bat`
+
+Результат сборки попадает в:
+
+- `build/docker/.release/<tag>`
+
+Внутри release bundle лежат:
+
+- compose-файлы;
+- production `.env`;
+- nginx-конфиг;
+- shell-скрипты;
+- docker image в виде `.tar`.
+
+Подробная инструкция по выкладке новой версии на сервер, когда там уже крутится предыдущая версия, описана в:
+
+- `doc/deployment-guide.md`
+
+## Бэкапы, логи и runtime-артефакты
+
+Проект умеет:
+
+- автоматически делать PostgreSQL backups через отдельный контейнер `postgres-backup`;
+- писать файловые structured logs в host-каталог;
+- хранить release bundle на сервере как отдельный артефакт релиза.
+
+Подробно:
+
+- как сделать backup вручную;
+- где лежат backup-файлы;
+- как скачать backup с сервера на компьютер;
+- где лежат файлы логов;
+- какие runtime-артефакты критично сохранять;
+
+описано в:
+
+- `doc/runtime-artifacts.md`
+
+## Дополнительная документация
+
+- `doc/ldpr_activist_demo_spec.md` — спецификация API и предметной модели.
+- `doc/docker-scripts.md` — справочник по docker-скриптам.
+- `doc/deployment-guide.md` — production deployment guide.
+- `doc/runtime-artifacts.md` — бэкапы, логи и прочие runtime-артефакты.

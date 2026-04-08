@@ -7,8 +7,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "${POSTGRES_PORT_PUBLIC}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,12 +14,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${REDIS_PORT_PUBLIC}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -29,6 +26,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    restart: unless-stopped
 
   postgres-backup:
     image: postgres:16-alpine
@@ -43,35 +41,46 @@ services:
       BACKUP_INTERVAL_SECONDS: ${DB_BACKUP_INTERVAL_SECONDS}
       BACKUP_RETENTION_DAYS: ${DB_BACKUP_RETENTION_DAYS}
       BACKUP_FILE_PREFIX: ${DB_BACKUP_FILE_PREFIX}
+      BACKUP_ENVIRONMENT_NAME: ${BACKUP_ENVIRONMENT_NAME}
     volumes:
       - "${DB_BACKUP_ROOT_PATH_HOST}:${DB_BACKUP_ROOT_PATH_CONTAINER}"
       - "./scripts:/scripts:ro"
-    entrypoint: ["/bin/sh", "/scripts/postgres-backup-loop.sh"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "tr -d '\\r' < \"${POSTGRES_BACKUP_LOOP_SCRIPT_PATH}\" | /bin/sh"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
   api:
-    build:
-      context: ../..
-      dockerfile: build/docker/Dockerfile
-      args:
-        DOTNET_VERSION: ${DOTNET_VERSION}
-        APP_PROJECT: ${APP_PROJECT}
+    image: ${API_IMAGE_NAME}:${API_IMAGE_TAG}
     environment:
-      DOTNET_ENVIRONMENT: Development
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT}
       ASPNETCORE_URLS: http://+:8080
 
       # .NET configuration via env vars
       ConnectionStrings__Postgres: ${POSTGRES_CONNECTION_STRING}
       ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING}
+      Swagger__Enabled: ${SWAGGER_ENABLED}
 
       Otp__TtlSeconds: ${OTP_TTL_SECONDS}
       Otp__Length: ${OTP_LENGTH}
       SmsRu__ApiId: ${SMS_RU_API_ID}
       SmsRu__IsTestMode: ${SMS_RU_IS_TEST_MODE}
       SmsRu__BaseUrl: ${SMS_RU_BASE_URL}
+
+      RateLimiting__Enabled: ${RATE_LIMITING_ENABLED}
+      RateLimiting__PublicAuthentication__PermitLimit: ${RATE_LIMITING_PUBLIC_AUTHENTICATION_PERMIT_LIMIT}
+      RateLimiting__PublicAuthentication__WindowSeconds: ${RATE_LIMITING_PUBLIC_AUTHENTICATION_WINDOW_SECONDS}
+      RateLimiting__PublicAuthentication__QueueLimit: ${RATE_LIMITING_PUBLIC_AUTHENTICATION_QUEUE_LIMIT}
+      RateLimiting__PublicOtpConfirmation__PermitLimit: ${RATE_LIMITING_PUBLIC_OTP_CONFIRMATION_PERMIT_LIMIT}
+      RateLimiting__PublicOtpConfirmation__WindowSeconds: ${RATE_LIMITING_PUBLIC_OTP_CONFIRMATION_WINDOW_SECONDS}
+      RateLimiting__PublicOtpConfirmation__QueueLimit: ${RATE_LIMITING_PUBLIC_OTP_CONFIRMATION_QUEUE_LIMIT}
+      RateLimiting__AuthenticatedMutation__PermitLimit: ${RATE_LIMITING_AUTHENTICATED_MUTATION_PERMIT_LIMIT}
+      RateLimiting__AuthenticatedMutation__WindowSeconds: ${RATE_LIMITING_AUTHENTICATED_MUTATION_WINDOW_SECONDS}
+      RateLimiting__AuthenticatedMutation__QueueLimit: ${RATE_LIMITING_AUTHENTICATED_MUTATION_QUEUE_LIMIT}
 
       FirebasePush__Enabled: ${FIREBASE_PUSH_ENABLED}
       FirebasePush__BaseUrl: ${FIREBASE_PUSH_BASE_URL}
@@ -102,8 +111,8 @@ services:
       # entrypoint target
       APP_DLL: ${APP_DLL}
 
-    ports:
-      - "${API_PORT}:8080"
+    expose:
+      - "8080"
     volumes:
       - "${STRUCTURED_LOGGING_FILES_ROOT_PATH_HOST}:${STRUCTURED_LOGGING_FILES_ROOT_PATH_CONTAINER}"
       - "./secrets:/run/secrets/firebase:ro"
@@ -112,7 +121,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - "./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
     restart: unless-stopped
 
 volumes:

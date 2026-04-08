@@ -1,9 +1,11 @@
 ﻿using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Push;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Push;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -21,6 +23,7 @@ public sealed class PushController : ControllerBase
 	}
 
 	[HttpPut("device")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -67,6 +70,7 @@ public sealed class PushController : ControllerBase
 	}
 
 	[HttpPost("device/deactivate")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

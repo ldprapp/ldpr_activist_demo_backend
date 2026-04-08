@@ -3,16 +3,18 @@ setlocal EnableExtensions
 
 pushd "%~dp0" || exit /b 1
 
+set "ENV_FILE=.env.local"
+set "COMPOSE_FILES=-f docker-compose.yml -f docker-compose.local.yml"
+
 set "RESET_PASSWORD=LDPR_RESET_2026"
 
 echo.
-echo [ldpr_activist_demo] WARNING: full docker reset requested.
+echo [ldpr_activist_demo][local] WARNING: full local docker reset requested.
 echo This will remove:
 echo   - all project containers
 echo   - project network
 echo   - ALL docker compose volumes ^(including PostgreSQL and Redis data^)
 echo   - locally built images
-echo   - local ".runtime" directory
 echo.
 
 choice /C YN /N /M "Are you sure you want to continue? [Y/N]: "
@@ -31,16 +33,18 @@ if not "%RESET_PASSWORD_INPUT%"=="%RESET_PASSWORD%" (
   exit /b 1
 )
 
-echo [ldpr_activist_demo] Cleaning (containers, networks, volumes, local images)...
-docker compose --env-file ".env" -f "docker-compose.yml" down --remove-orphans --volumes --rmi local
-if errorlevel 1 (
-  echo Failed to clean.
+if not exist "%ENV_FILE%" (
+  echo "%CD%\%ENV_FILE%" was not found.
   popd
   exit /b 1
 )
 
-if exist ".runtime" (
-  rmdir /s /q ".runtime"
+echo [ldpr_activist_demo][local] Cleaning (containers, networks, volumes, local images)...
+docker compose --env-file "%ENV_FILE%" %COMPOSE_FILES% down --remove-orphans --volumes --rmi local
+if errorlevel 1 (
+  echo Failed to clean.
+  popd
+  exit /b 1
 )
 
 echo Done.

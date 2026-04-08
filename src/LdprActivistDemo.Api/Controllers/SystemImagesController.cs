@@ -1,10 +1,12 @@
 ﻿using LdprActivistDemo.Api.Errors;
 using LdprActivistDemo.Api.Helpers;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Images;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -90,6 +92,7 @@ public sealed class SystemImagesController : ControllerBase
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
 	/// <response code="403">Операция запрещена для текущей роли.</response>
 	[HttpPut("{imgName}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(SystemImageDto), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(SystemImageDto), StatusCodes.Status200OK)]

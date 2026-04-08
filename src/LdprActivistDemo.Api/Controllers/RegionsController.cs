@@ -1,12 +1,14 @@
 ﻿using System.Text.Json;
 
 using LdprActivistDemo.Api.Errors;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Geo;
 using LdprActivistDemo.Application.Geo.Models;
 using LdprActivistDemo.Contracts.Errors;
 using LdprActivistDemo.Contracts.Geo;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -72,6 +74,7 @@ public sealed class RegionsController : ControllerBase
 	/// <response code="401">Указаны неверные учётные данные пользователя.</response>
 	/// <response code="409">Регион с таким именем уже существует.</response>
 	[HttpPost]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(typeof(CreateRegionResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -123,6 +126,7 @@ public sealed class RegionsController : ControllerBase
 	/// <response code="404">Указанный регион не найден.</response>
 	/// <response code="409">Обнаружен конфликт уникальности или операция запрещена текущим состоянием справочника.</response>
 	[HttpPost("{regionName}/settlements")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("application/json")]
 	[ProducesResponseType(typeof(CreateSettlementsResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -189,6 +193,7 @@ new CreateSettlementsResponse(createdNames));
 	/// <response code="404">Регион не найден.</response>
 	/// <response code="409">Регион с новым именем уже существует.</response>
 	[HttpPut("{regionName}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -235,6 +240,7 @@ new CreateSettlementsResponse(createdNames));
 	/// <response code="404">Исходный или целевой регион не найден.</response>
 	/// <response code="409">Регион нельзя удалить из-за конфликтующего состояния данных.</response>
 	[HttpDelete("{regionName}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -277,6 +283,7 @@ new CreateSettlementsResponse(createdNames));
 	/// <response code="404">Регион не найден.</response>
 	/// <response code="409">Операция запрещена текущим состоянием данных.</response>
 	[HttpPost("{regionName}/restore")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -316,6 +323,7 @@ new CreateSettlementsResponse(createdNames));
 	/// <response code="404">Регион или населённый пункт не найден.</response>
 	/// <response code="409">Населённый пункт с новым именем уже существует.</response>
 	[HttpPut("{regionName}/settlements/{settlementName}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -365,6 +373,7 @@ new CreateSettlementsResponse(createdNames));
 	/// <response code="404">Регион, исходный или целевой населённый пункт не найден.</response>
 	/// <response code="409">Операция запрещена текущим состоянием данных.</response>
 	[HttpDelete("{regionName}/settlements/{settlementName}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -411,6 +420,7 @@ new CreateSettlementsResponse(createdNames));
 	/// <response code="404">Регион или населённый пункт не найден.</response>
 	/// <response code="409">Операция запрещена текущим состоянием данных.</response>
 	[HttpPost("{regionName}/settlements/{settlementName}/restore")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

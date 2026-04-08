@@ -1,5 +1,6 @@
 ﻿using LdprActivistDemo.Api.Errors;
 using LdprActivistDemo.Api.Helpers;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Tasks;
 using LdprActivistDemo.Application.Tasks.Models;
@@ -10,6 +11,7 @@ using LdprActivistDemo.Contracts.Tasks;
 using LdprActivistDemo.Contracts.Users;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 using TaskStatus = LdprActivistDemo.Contracts.Tasks.TaskStatus;
 
@@ -288,6 +290,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="403">Пользователь не имеет прав на создание задач.</response>
 	/// <response code="404">Один из связанных объектов не найден.</response>
 	[HttpPost]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(typeof(CreateTaskResponse), StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -446,6 +449,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="403">Пользователь не имеет прав на изменение задачи.</response>
 	/// <response code="404">Задача или связанный объект не найдены.</response>
 	[HttpPut("{taskId:guid}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -585,6 +589,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="403">Пользователь не имеет прав на закрытие задачи.</response>
 	/// <response code="404">Задача не найдена.</response>
 	[HttpPost("{taskId:guid}/close")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -621,6 +626,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="403">Пользователь не имеет прав на открытие задачи.</response>
 	/// <response code="404">Задача не найдена.</response>
 	[HttpPost("{taskId:guid}/open")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -964,6 +970,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="404">Задача или пользователь не найдены.</response>
 	/// <response code="409">Создание заявки недопустимо в текущем состоянии задачи или заявки.</response>
 	[HttpPost("{taskId:guid}/submit")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status201Created)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -1017,6 +1024,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="404">Заявка или задача не найдены.</response>
 	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPost("submit/{submitId:guid}/for-review")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -1097,6 +1105,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="404">Заявка или задача не найдены.</response>
 	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPut("submit/{submitId:guid}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[Consumes("multipart/form-data")]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -1614,6 +1623,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="404">Заявка или задача не найдены.</response>
 	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPost("submit/{submitId:guid}/approve")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
@@ -1656,6 +1666,7 @@ public sealed class TasksController : ControllerBase
 	/// <response code="404">Заявка или задача не найдены.</response>
 	/// <response code="409">Операция недопустима в текущем состоянии задачи или заявки.</response>
 	[HttpPost("submit/{submitId:guid}/reject")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

@@ -28,6 +28,8 @@ public static class ServiceCollectionExtensions
 		services.AddDbContext<AppDbContext>(options =>
 			options.UseNpgsql(cs, npgsql => npgsql.MigrationsAssembly("LdprActivistDemo.Migrations")));
 
+		services.AddScoped<IDatabaseSchemaInspector, DatabaseSchemaInspector>();
+
 		var redisCs = configuration.GetConnectionString("Redis") ?? configuration["ConnectionStrings:Redis"];
 		if(!string.IsNullOrWhiteSpace(redisCs))
 		{

@@ -73,7 +73,7 @@ public static class ControllerProblemExtensions
 		this ControllerBase controller,
 		Guid actorUserId,
 		string? actorUserPassword,
-		string actorPasswordHeader = "X-Actor-Password")
+		string actorPasswordHeader = ActorPasswordHeaders.SupportedHeadersDisplay)
 	{
 		var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 		if(actorUserId == Guid.Empty)
@@ -153,7 +153,7 @@ public static class ControllerProblemExtensions
 		string? actorUserPassword,
 		string? comparedPassword,
 		string comparedFieldName,
-		string actorPasswordHeader = "X-Actor-Password")
+		string actorPasswordHeader = ActorPasswordHeaders.SupportedHeadersDisplay)
 	{
 		if(string.IsNullOrWhiteSpace(comparedPassword) || string.IsNullOrWhiteSpace(actorUserPassword))
 		{

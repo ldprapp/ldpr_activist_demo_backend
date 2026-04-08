@@ -19,6 +19,10 @@ RUN dotnet publish "${APP_PROJECT}" -c Release -o /app/publish --no-restore
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS final
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
 
 # Начиная с .NET 8 официальные образы по умолчанию слушают 8080 (мы фиксируем это явно)

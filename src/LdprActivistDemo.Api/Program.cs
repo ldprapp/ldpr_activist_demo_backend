@@ -1,16 +1,17 @@
+using LdprActivistDemo.Api.Cors;
 using LdprActivistDemo.Api.Health;
 using LdprActivistDemo.Api.Logging;
 using LdprActivistDemo.Api.Middleware;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Api.Time;
 using LdprActivistDemo.Application;
 using LdprActivistDemo.Application.Diagnostics;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.PasswordReset;
-using LdprActivistDemo.Application.Users;
 using LdprActivistDemo.Persistence;
 
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Serilog;
@@ -21,6 +22,8 @@ Log.Information("Bootstrap logger configured.");
 
 try
 {
+	const string FrontendCorsPolicyName = "Frontend";
+
 	var builder = WebApplication.CreateBuilder(args);
 
 	builder.Services.Configure<ApplicationTimeOptions>(
@@ -28,6 +31,41 @@ try
 
 	var applicationTimeOptions = builder.Configuration.GetSection(ApplicationTimeOptions.SectionName).Get<ApplicationTimeOptions>() ?? new ApplicationTimeOptions();
 	var applicationCulture = ApplicationTimeCultureConfigurator.ApplyDefaultCulture(applicationTimeOptions.Locale);
+	var swaggerEnabled = builder.Configuration.GetValue<bool>("Swagger:Enabled");
+	var rateLimitingOptions = builder.Configuration
+		.GetSection(ApiRateLimitingOptions.SectionName)
+		.Get<ApiRateLimitingOptions>() ?? new ApiRateLimitingOptions();
+
+	builder.Services.Configure<ForwardedHeadersOptions>(options =>
+	{
+		options.ForwardedHeaders =
+			ForwardedHeaders.XForwardedFor
+			| ForwardedHeaders.XForwardedProto
+			| ForwardedHeaders.XForwardedHost;
+
+		// API is no longer published directly to the host.
+		// Requests should arrive only from the local nginx reverse proxy inside docker network.
+		options.KnownNetworks.Clear();
+		options.KnownProxies.Clear();
+	});
+
+	var configuredCorsOrigins =
+		builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+		?? Array.Empty<string>();
+	var allowDevelopmentLoopbackOrigins =
+		builder.Configuration.GetValue<bool>("Cors:AllowDevelopmentLoopbackOrigins");
+
+	builder.Services.AddCors(options =>
+	{
+		options.AddPolicy(FrontendCorsPolicyName, policy => policy
+			.SetIsOriginAllowed(origin => CorsOriginMatcher.IsAllowed(
+				origin,
+				configuredCorsOrigins,
+				builder.Environment.IsDevelopment() && allowDevelopmentLoopbackOrigins))
+			.AllowAnyHeader()
+			.AllowAnyMethod()
+			.WithExposedHeaders(CorrelationIdMiddleware.HeaderName));
+	});
 
 	builder.AddStructuredLogging();
 
@@ -44,25 +82,31 @@ try
 		});
 
 	builder.Services.Configure<ApiBehaviorOptions>(o => o.SuppressModelStateInvalidFilter = true);
-	builder.Services.AddEndpointsApiExplorer();
-	builder.Services.AddSwaggerGen(o =>
+	if(swaggerEnabled)
 	{
-		var apiAssembly = typeof(Program).Assembly;
-		var xmlFile = $"{apiAssembly.GetName().Name}.xml";
-		var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-		if(File.Exists(xmlPath))
+		builder.Services.AddEndpointsApiExplorer();
+		builder.Services.AddSwaggerGen(o =>
 		{
-			o.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
-		}
-	});
+			var apiAssembly = typeof(Program).Assembly;
+			var xmlFile = $"{apiAssembly.GetName().Name}.xml";
+			var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+			if(File.Exists(xmlPath))
+			{
+				o.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+			}
+		});
+	}
 
 	builder.Services.AddSingleton<IBackendVersionProvider, BackendVersionProvider>();
 	builder.Services.Configure<OtpOptions>(builder.Configuration.GetSection("Otp"));
 	builder.Services.Configure<PasswordResetOptions>(builder.Configuration.GetSection("PasswordReset"));
 	builder.Services.Configure<SmsRuOptions>(builder.Configuration.GetSection(SmsRuOptions.SectionName));
+	builder.Services.Configure<ApiRateLimitingOptions>(
+		builder.Configuration.GetSection(ApiRateLimitingOptions.SectionName));
 
 	builder.Services.AddApplication();
 	builder.Services.AddPersistence(builder.Configuration);
+	builder.Services.AddApiRateLimiting(rateLimitingOptions);
 	builder.Services.AddHttpClient<IOtpSender, SmsRuOtpSender>((serviceProvider, httpClient) =>
 	{
 		var options = serviceProvider
@@ -130,6 +174,8 @@ try
 		("EnvironmentName", app.Environment.EnvironmentName),
 		("ApplicationTimeLocale", applicationCulture.Name),
 		("ContentRootPath", app.Environment.ContentRootPath),
+		("SwaggerEnabled", swaggerEnabled),
+		("RateLimitingEnabled", rateLimitingOptions.Enabled),
 	};
 
 	using(var scope = app.Logger.BeginExecutionScope(
@@ -146,82 +192,55 @@ try
 			startupProperties);
 	}
 
+	app.UseForwardedHeaders();
+	app.UseRouting();
 	app.UseMiddleware<CorrelationIdMiddleware>();
 	app.UseMiddleware<ApiExceptionHandlingMiddleware>();
 	app.UseMiddleware<RequestLoggingMiddleware>();
-	app.UseSwagger();
-	app.UseSwaggerUI();
-
-	await using(var scope = app.Services.CreateAsyncScope())
+	app.UseCors(FrontendCorsPolicyName);
+	if(rateLimitingOptions.Enabled)
 	{
-		var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-		var autoMigrate = builder.Configuration.GetValue<bool>("Database:AutoMigrate");
-		var migrationProperties = new (string Name, object? Value)[]
-		{
-			("AutoMigrateEnabled", autoMigrate),
-			("DbContextType", db.GetType().Name),
-		};
-
-		using(app.Logger.BeginExecutionScope(
-				  DomainLogEvents.Startup.MigrationsApply,
-				  LogLayers.Host,
-				  ApiLogOperations.Startup.ApplyMigrations,
-				  migrationProperties))
-		{
-			if(autoMigrate)
-			{
-				app.Logger.LogStarted(
-					DomainLogEvents.Startup.MigrationsApply,
-					LogLayers.Host,
-					ApiLogOperations.Startup.ApplyMigrations,
-					"Applying pending Entity Framework Core migrations.",
-					migrationProperties);
-
-				await db.Database.MigrateAsync(app.Lifetime.ApplicationStopping);
-
-				app.Logger.LogCompleted(
-					LogLevel.Information,
-					DomainLogEvents.Startup.MigrationsApply,
-					LogLayers.Host,
-					ApiLogOperations.Startup.ApplyMigrations,
-					"Entity Framework Core migrations applied successfully.",
-					migrationProperties);
-			}
-			else
-			{
-				app.Logger.LogCompleted(
-					LogLevel.Information,
-					DomainLogEvents.Startup.MigrationsApply,
-					LogLayers.Host,
-					ApiLogOperations.Startup.ApplyMigrations,
-					"Automatic Entity Framework Core migrations are disabled.",
-					migrationProperties);
-			}
-		}
-
-		var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-		var deletedCount = await userRepository.DeleteAllUnconfirmedAsync(app.Lifetime.ApplicationStopping);
-
-		var cleanupProperties = new (string Name, object? Value)[]
-		{
-			("DeletedCount", deletedCount),
-		};
-
-		using(app.Logger.BeginExecutionScope(
-				  DomainLogEvents.Startup.CleanupUnconfirmedUsers,
-				  LogLayers.Host,
-				  ApiLogOperations.Startup.CleanupUnconfirmedUsers,
-				  cleanupProperties))
-		{
-			app.Logger.LogCompleted(
-				LogLevel.Information,
-				DomainLogEvents.Startup.CleanupUnconfirmedUsers,
-				LogLayers.Host,
-				ApiLogOperations.Startup.CleanupUnconfirmedUsers,
-				"Startup cleanup of unconfirmed users completed.",
-				cleanupProperties);
-		}
+		app.UseRateLimiter();
 	}
+	app.UseMiddleware<ActorPasswordHeaderDecodingMiddleware>();
+	if(swaggerEnabled)
+	{
+		app.UseSwagger();
+		app.UseSwaggerUI();
+	}
+
+	var autoMigrate = builder.Configuration.GetValue<bool>("Database:AutoMigrate");
+	var persistenceInitializationProperties = new (string Name, object? Value)[]
+ 	{
+		("AutoMigrateEnabled", autoMigrate),
+	};
+
+	using(app.Logger.BeginExecutionScope(
+			  DomainLogEvents.Startup.MigrationsApply,
+			  LogLayers.Host,
+			  ApiLogOperations.Startup.ApplyMigrations,
+			  persistenceInitializationProperties))
+	{
+		app.Logger.LogStarted(
+			DomainLogEvents.Startup.MigrationsApply,
+			LogLayers.Host,
+			ApiLogOperations.Startup.ApplyMigrations,
+			"Initializing persistence startup sequence.",
+			persistenceInitializationProperties);
+
+		await app.Services.InitializePersistenceAsync(
+			autoMigrate,
+			app.Lifetime.ApplicationStopping);
+
+		app.Logger.LogCompleted(
+			LogLevel.Information,
+			DomainLogEvents.Startup.MigrationsApply,
+			LogLayers.Host,
+			ApiLogOperations.Startup.ApplyMigrations,
+			"Persistence startup sequence completed successfully.",
+			persistenceInitializationProperties);
+	}
+
 
 	app.MapControllers();
 
@@ -229,6 +248,8 @@ try
 	{
 		("EnvironmentName", app.Environment.EnvironmentName),
 		("ApplicationTimeLocale", applicationCulture.Name),
+		("SwaggerEnabled", swaggerEnabled),
+		("RateLimitingEnabled", rateLimitingOptions.Enabled),
 	};
 
 	using(var scope = app.Logger.BeginExecutionScope(

@@ -1,10 +1,12 @@
 ﻿using LdprActivistDemo.Api.Errors;
 using LdprActivistDemo.Api.Helpers;
+using LdprActivistDemo.Api.RateLimiting;
 using LdprActivistDemo.Application.Images;
 using LdprActivistDemo.Application.Images.Models;
 using LdprActivistDemo.Contracts.Errors;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LdprActivistDemo.Api.Controllers;
 
@@ -88,6 +90,7 @@ public sealed class ImagesController : ControllerBase
 	/// <response code="404">Изображение не найдено.</response>
 	/// <response code="409">Изображение используется системой и не может быть удалено.</response>
 	[HttpDelete("{id:guid}")]
+	[EnableRateLimiting(ApiRateLimitingPolicyNames.AuthenticatedMutation)]
 	[ProducesResponseType(StatusCodes.Status204NoContent)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

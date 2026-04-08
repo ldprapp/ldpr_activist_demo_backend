@@ -3,10 +3,18 @@ setlocal EnableExtensions
 
 pushd "%~dp0" || exit /b 1
 
-if exist ".env" (
-  for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
-    if not "%%A"=="" set "%%A=%%B"
-  )
+set "ENV_FILE=.env.local"
+set "COMPOSE_FILES=-f docker-compose.yml -f docker-compose.local.yml"
+
+if not exist "%ENV_FILE%" (
+  echo "%CD%\%ENV_FILE%" was not found.
+  echo Create it from ".env.local.template" and run again.
+  popd
+  exit /b 1
+)
+
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
+  if not "%%A"=="" set "%%A=%%B"
 )
 
 docker --version >nul 2>&1
@@ -49,21 +57,21 @@ if /I "%FIREBASE_PUSH_ENABLED%"=="true" (
     exit /b 1
   )
   if "%FIREBASE_PUSH_PROJECT_ID%"=="" (
-    echo Firebase push is enabled, but FIREBASE_PUSH_PROJECT_ID is empty in .env
+    echo Firebase push is enabled, but FIREBASE_PUSH_PROJECT_ID is empty in %ENV_FILE%
     popd
     exit /b 1
   )
 )
 
-echo [ldpr_activist_demo] Starting...
-docker compose --env-file ".env" -f "docker-compose.yml" up -d postgres redis postgres-backup
+echo [ldpr_activist_demo][local] Starting...
+docker compose --env-file "%ENV_FILE%" %COMPOSE_FILES% up -d postgres redis postgres-backup
 if errorlevel 1 (
   echo Failed to start infrastructure.
   popd
   exit /b 1
 )
 
-docker compose --env-file ".env" -f "docker-compose.yml" up -d --build api
+docker compose --env-file "%ENV_FILE%" %COMPOSE_FILES% up -d --build api nginx
 if errorlevel 1 (
   echo Failed to start.
   popd
@@ -71,11 +79,11 @@ if errorlevel 1 (
 )
 
 if not defined API_PORT (
-  for /f "usebackq delims=" %%P in (`docker compose --env-file ".env" -f "docker-compose.yml" port api 8080 2^>nul`) do (
+  for /f "usebackq delims=" %%P in (`docker compose --env-file "%ENV_FILE%" %COMPOSE_FILES% port nginx 80 2^>nul`) do (
     set "API_PORT=%%P"
   )
   for /f "tokens=2 delims=:" %%A in ("%API_PORT%") do set "API_PORT=%%A"
 )
 
-echo Done. API should be available on http://localhost:%API_PORT%
+echo Done. Local API should be available on http://localhost:%API_PORT% via nginx reverse proxy.
 popd
