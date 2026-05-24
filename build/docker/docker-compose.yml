@@ -63,6 +63,12 @@ services:
       # .NET configuration via env vars
       ConnectionStrings__Postgres: ${POSTGRES_CONNECTION_STRING}
       ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING}
+      
+      Cors__AllowDevelopmentLoopbackOrigins: ${CORS_ALLOW_DEVELOPMENT_LOOPBACK_ORIGINS:-false}
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN_WEB_PROD:-}
+      Cors__AllowedOrigins__1: ${CORS_ALLOWED_ORIGIN_WEB_PROD_WWW:-}
+      Cors__AllowedOrigins__2: ${CORS_ALLOWED_ORIGIN_WEB_DEBUG:-}      
+      
       Swagger__Enabled: ${SWAGGER_ENABLED}
 
       Otp__TtlSeconds: ${OTP_TTL_SECONDS}
@@ -86,6 +92,24 @@ services:
       FirebasePush__BaseUrl: ${FIREBASE_PUSH_BASE_URL}
       FirebasePush__ProjectId: ${FIREBASE_PUSH_PROJECT_ID}
       FirebasePush__ServiceAccountJsonPath: ${FIREBASE_PUSH_SERVICE_ACCOUNT_JSON_PATH}
+
+      FirebaseWeb__ApiKey: ${FIREBASE_WEB_API_KEY}
+      FirebaseWeb__AuthDomain: ${FIREBASE_WEB_AUTH_DOMAIN}
+      FirebaseWeb__ProjectId: ${FIREBASE_WEB_PROJECT_ID}
+      FirebaseWeb__StorageBucket: ${FIREBASE_WEB_STORAGE_BUCKET}
+      FirebaseWeb__MessagingSenderId: ${FIREBASE_WEB_MESSAGING_SENDER_ID}
+      FirebaseWeb__AppId: ${FIREBASE_WEB_APP_ID}
+      FirebaseWeb__MeasurementId: ${FIREBASE_WEB_MEASUREMENT_ID}
+      FirebaseWeb__PublicVapidKey: ${FIREBASE_WEB_PUBLIC_VAPID_KEY}
+
+      NotificationFallback__Enabled: ${NOTIFICATION_FALLBACK_ENABLED}
+      NotificationFallback__PollIntervalSeconds: ${NOTIFICATION_FALLBACK_POLL_INTERVAL_SECONDS}
+      NotificationFallback__LockSeconds: ${NOTIFICATION_FALLBACK_LOCK_SECONDS}
+      NotificationFallback__BatchSize: ${NOTIFICATION_FALLBACK_BATCH_SIZE}
+      NotificationFallback__DefaultDelaySeconds: ${NOTIFICATION_FALLBACK_DEFAULT_DELAY_SECONDS}
+      NotificationFallback__TaskCreatedDelaySeconds: ${NOTIFICATION_FALLBACK_TASK_CREATED_DELAY_SECONDS}
+      NotificationFallback__SubmissionApprovedDelaySeconds: ${NOTIFICATION_FALLBACK_SUBMISSION_APPROVED_DELAY_SECONDS}
+      NotificationFallback__SubmissionRejectedDelaySeconds: ${NOTIFICATION_FALLBACK_SUBMISSION_REJECTED_DELAY_SECONDS}
 
       Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE}
       ApplicationTime__Locale: ${APPLICATION_TIME_LOCALE}
@@ -128,8 +152,6 @@ services:
     depends_on:
       api:
         condition: service_started
-    volumes:
-      - "./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
     restart: unless-stopped
 
 volumes:

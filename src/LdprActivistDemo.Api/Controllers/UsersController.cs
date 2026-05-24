@@ -877,6 +877,8 @@ public sealed class UsersController : ControllerBase
 	/// Поддерживается фильтрация по роли, географии и поиску по ФИО. При значении
 	/// <c>role=coordinator</c> возвращаются пользователи с ролями <c>coordinator</c>
 	/// и <c>admin</c> одновременно. Запрос <c>role=admin</c> не поддерживается.
+	/// Забаненные пользователи не попадают в обычную выдачу. Запрос
+	/// <c>role=banned</c> доступен только пользователю с ролью <c>admin</c>.
 	/// Поиск по параметру <c>search</c> применяется после остальных фильтров.
 	/// Формат ответа задаётся параметром <c>responseFormat</c>: список пользователей
 	/// или только количество.
@@ -888,13 +890,19 @@ public sealed class UsersController : ControllerBase
 	/// <param name="responseFormat">Формат ответа: список пользователей или только количество.</param>
 	/// <param name="start">Начальный индекс диапазона выборки, начиная с 1.</param>
 	/// <param name="end">Конечный индекс диапазона выборки, начиная с 1.</param>
+	/// <param name="actorUserId">Идентификатор пользователя, выполняющего запрос. Обязателен только для <c>role=banned</c>.</param>
+	/// <param name="actorUserPassword">Пароль пользователя из заголовка <c>X-Actor-Password</c>. Обязателен только для <c>role=banned</c>.</param>
 	/// <param name="cancellationToken">Токен отмены HTTP-запроса.</param>
 	/// <response code="200">Лента пользователей успешно возвращена.</response>
 	/// <response code="400">Переданы некорректные фильтры или параметры пагинации.</response>
+	/// <response code="401">Указаны неверные учётные данные пользователя при запросе забаненных пользователей.</response>
+	/// <response code="403">Запрос забаненных пользователей доступен только администратору.</response>
 	[HttpGet("feed")]
 	[ProducesResponseType(typeof(IReadOnlyList<UserDto>), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(UsersCountResponse), StatusCodes.Status200OK)]
 	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+	[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 	public async Task<IActionResult> GetFeed(
 		[FromQuery] string? role,
 		[FromQuery] string? regionName,
@@ -903,6 +911,8 @@ public sealed class UsersController : ControllerBase
 		[FromQuery] UserFeedResponseFormat responseFormat = UserFeedResponseFormat.Users,
 		[FromQuery] int? start = null,
 		[FromQuery] int? end = null,
+		[FromQuery] Guid actorUserId = default,
+		[FromHeader(Name = ActorPasswordHeader)] string? actorUserPassword = null,
 		CancellationToken cancellationToken = default)
 	{
 		var invalid = TryBuildValidationProblemIfInvalidModel();
@@ -930,9 +940,51 @@ public sealed class UsersController : ControllerBase
 		};
 
 		UserRoleRules.TryNormalizeUserFeedRole(role, out var normalizedRole, out _);
+		var isBannedFeedRequested = UserRoleRules.IsBanned(normalizedRole);
+
+		if(isBannedFeedRequested)
+		{
+			var invalidActor = this.TryBuildActorRequestValidationProblem(
+				actorUserId,
+				actorUserPassword,
+				ActorPasswordHeaders.SupportedHeadersDisplay);
+			if(invalidActor is not null)
+			{
+				return invalidActor;
+			}
+
+			var actorAuth = await _actorAccess.AuthenticateAsync(
+				actorUserId,
+				actorUserPassword!,
+				cancellationToken);
+			if(!actorAuth.IsSuccess)
+			{
+				return this.ProblemWithCode(
+					StatusCodes.Status401Unauthorized,
+					ApiErrorCodes.InvalidCredentials,
+					"Неверные учётные данные.",
+					$"Проверьте actorUserId и заголовок {ActorPasswordHeaders.SupportedHeadersDisplay}.");
+			}
+
+			if(!UserRoleRules.IsAdmin(actorAuth.Actor!.Role))
+			{
+				return this.ProblemWithCode(
+					StatusCodes.Status403Forbidden,
+					ApiErrorCodes.Forbidden,
+					"Нет доступа.",
+					"Просмотр забаненных пользователей доступен только администратору.");
+			}
+		}
 
 		var users = await _users.GetUsersAsync(normalizedRole, regionName, settlementName, search, cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
+
+		if(!isBannedFeedRequested)
+		{
+			users = users
+				.Where(x => !UserRoleRules.IsBanned(x.Role))
+				.ToList();
+		}
 
 		if(string.Equals(normalizedResponseFormat, UserResponseFormat.Count, StringComparison.Ordinal))
 		{

@@ -90,7 +90,7 @@ copy /y "docker-compose.yml" "%RELEASE_DIR%\docker-compose.yml" >nul
 copy /y "docker-compose.prod.yml" "%RELEASE_DIR%\docker-compose.prod.yml" >nul
 copy /y ".env.production" "%RELEASE_DIR%\.env.production" >nul
 copy /y ".env.production.template" "%RELEASE_DIR%\.env.production.template" >nul
-copy /y "nginx\default.conf" "%RELEASE_DIR%\nginx\default.conf" >nul
+copy /y "nginx\default.prod.conf" "%RELEASE_DIR%\nginx\default.prod.conf" >nul
 xcopy /y /i "scripts\*.sh" "%RELEASE_DIR%\scripts\" >nul
 
 echo [ldpr_activist_demo][release] Synchronizing copied production env files with resolved image reference...
@@ -125,7 +125,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  (Join-Path $releaseDir 'docker-compose.prod.yml')," ^
   "  (Join-Path $releaseDir '.env.production')," ^
   "  (Join-Path $releaseDir '.env.production.template')," ^
-  "  (Join-Path $releaseDir 'nginx\default.conf')" ^
+  "  (Join-Path $releaseDir 'nginx\default.prod.conf')" ^
   ");" ^
   "$files += Get-ChildItem -Path (Join-Path $releaseDir 'scripts') -Filter '*.sh' | Select-Object -ExpandProperty FullName;" ^
   "$enc = New-Object System.Text.UTF8Encoding($false);" ^

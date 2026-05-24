@@ -659,7 +659,10 @@ public sealed class TaskRepository : ITaskRepository
 				}
 
 				var tasks = await _db.Tasks.AsNoTracking()
-					.Where(t => t.RegionId == user.RegionId && (t.SettlementId == null || t.SettlementId == user.SettlementId))
+					.Where(t =>
+						t.Status == TaskStatus.Open
+						&& t.RegionId == user.RegionId
+						&& (t.SettlementId == null || t.SettlementId == user.SettlementId))
 					.OrderByDescending(t => t.PublishedAt)
 					.ToListAsync(cancellationToken);
 

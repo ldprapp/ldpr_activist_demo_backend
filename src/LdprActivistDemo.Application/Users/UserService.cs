@@ -1,4 +1,6 @@
-﻿using LdprActivistDemo.Application.Diagnostics;
+﻿using System.Text;
+
+using LdprActivistDemo.Application.Diagnostics;
 using LdprActivistDemo.Application.Logging;
 using LdprActivistDemo.Application.Otp;
 using LdprActivistDemo.Application.Users.Models;
@@ -1156,11 +1158,20 @@ public sealed class UserService : IUserService
 		}
 
 		return users
-			.Where(x => IsUserMatchedBySearch(x, normalizedSearch, searchTokens))
+			.Select((user, index) => new
+			{
+				User = user,
+				OriginalIndex = index,
+				Score = ResolveUserSearchScore(user, normalizedSearch, searchTokens),
+			})
+			.Where(x => x.Score.HasValue)
+			.OrderBy(x => x.Score.GetValueOrDefault())
+			.ThenBy(x => x.OriginalIndex)
+			.Select(x => x.User)
 			.ToList();
 	}
 
-	private static bool IsUserMatchedBySearch(
+	private static int? ResolveUserSearchScore(
 		UserPublicModel user,
 		string normalizedSearch,
 		IReadOnlyList<string> searchTokens)
@@ -1168,63 +1179,201 @@ public sealed class UserService : IUserService
 		var fullName = BuildNormalizedUserFullName(user);
 		if(fullName.Length == 0)
 		{
-			return false;
+			return null;
+		}
+
+		if(string.Equals(fullName, normalizedSearch, StringComparison.Ordinal))
+		{
+			return 0;
 		}
 
 		if(fullName.Contains(normalizedSearch, StringComparison.Ordinal))
 		{
-			return true;
+			return 1;
 		}
 
 		var nameTokens = SplitNormalizedSearchTokens(fullName);
 		if(nameTokens.Length == 0)
 		{
-			return false;
+			return null;
 		}
 
-		for(var i = 0; i < searchTokens.Count; i++)
-		{
-			var searchToken = searchTokens[i];
-			var matched = false;
-
-			for(var j = 0; j < nameTokens.Length; j++)
-			{
-				if(IsFuzzyNameTokenMatch(nameTokens[j], searchToken))
-				{
-					matched = true;
-					break;
-				}
-			}
-
-			if(!matched)
-			{
-				return false;
-			}
-		}
-
-		return true;
+		return ResolveBestNameTokenAssignmentScore(nameTokens, searchTokens);
 	}
 
-	private static bool IsFuzzyNameTokenMatch(string nameToken, string searchToken)
+	private static int? ResolveBestNameTokenAssignmentScore(
+		IReadOnlyList<string> nameTokens,
+		IReadOnlyList<string> searchTokens)
+	{
+		if(searchTokens.Count == 0)
+		{
+			return 0;
+		}
+
+		if(nameTokens.Count == 0 || searchTokens.Count > nameTokens.Count)
+		{
+			return null;
+		}
+
+		var orderedSearchTokens = searchTokens
+			.OrderByDescending(x => x.Length)
+			.ToArray();
+
+		var usedNameTokenIndexes = new bool[nameTokens.Count];
+		return ResolveBestNameTokenAssignmentScore(
+			nameTokens,
+			orderedSearchTokens,
+			usedNameTokenIndexes,
+			searchTokenIndex: 0,
+			currentScore: 0,
+			bestKnownScore: int.MaxValue);
+	}
+
+	private static int? ResolveBestNameTokenAssignmentScore(
+		IReadOnlyList<string> nameTokens,
+		IReadOnlyList<string> searchTokens,
+		bool[] usedNameTokenIndexes,
+		int searchTokenIndex,
+		int currentScore,
+		int bestKnownScore)
+	{
+		if(searchTokenIndex >= searchTokens.Count)
+		{
+			return currentScore;
+		}
+
+		if(currentScore >= bestKnownScore)
+		{
+			return null;
+		}
+
+		var searchToken = searchTokens[searchTokenIndex];
+		int? bestScore = null;
+
+		for(var i = 0; i < nameTokens.Count; i++)
+		{
+			if(usedNameTokenIndexes[i])
+			{
+				continue;
+			}
+
+			var tokenScore = ResolveFuzzyNameTokenScore(nameTokens[i], searchToken);
+			if(!tokenScore.HasValue)
+			{
+				continue;
+			}
+
+			var nextScore = currentScore + tokenScore.Value;
+			if(nextScore >= bestKnownScore)
+			{
+				continue;
+			}
+
+			usedNameTokenIndexes[i] = true;
+
+			var candidateScore = ResolveBestNameTokenAssignmentScore(
+				nameTokens,
+				searchTokens,
+				usedNameTokenIndexes,
+				searchTokenIndex + 1,
+				nextScore,
+				bestScore ?? bestKnownScore);
+
+			usedNameTokenIndexes[i] = false;
+
+			if(!candidateScore.HasValue)
+			{
+				continue;
+			}
+
+			if(!bestScore.HasValue || candidateScore.Value < bestScore.Value)
+			{
+				bestScore = candidateScore.Value;
+				bestKnownScore = candidateScore.Value;
+			}
+		}
+
+		return bestScore;
+	}
+
+	private static int? ResolveFuzzyNameTokenScore(string nameToken, string searchToken)
 	{
 		if(nameToken.Length == 0 || searchToken.Length == 0)
 		{
-			return false;
+			return null;
 		}
 
-		if(nameToken.Contains(searchToken, StringComparison.Ordinal)
-		   || searchToken.Contains(nameToken, StringComparison.Ordinal))
+		if(string.Equals(nameToken, searchToken, StringComparison.Ordinal))
 		{
-			return true;
+			return 0;
+		}
+
+		if(IsLikelyTruncatedNameTokenMatch(nameToken, searchToken))
+		{
+			return 1;
+		}
+
+		if(IsLikelyTruncatedNameTokenMatch(searchToken, nameToken))
+		{
+			return 2;
+		}
+
+		if(nameToken.Contains(searchToken, StringComparison.Ordinal))
+		{
+			return 3;
+		}
+
+		if(searchToken.Contains(nameToken, StringComparison.Ordinal))
+		{
+			return 4;
 		}
 
 		var maxDistance = ResolveAllowedNameDistance(nameToken, searchToken);
 		if(maxDistance <= 0)
 		{
+			return null;
+		}
+
+		var distance = GetBoundedDamerauLevenshteinDistance(nameToken, searchToken, maxDistance);
+		return distance <= maxDistance
+			? 10 + distance
+			: null;
+	}
+
+	private static bool IsLikelyTruncatedNameTokenMatch(string fullToken, string partialToken)
+	{
+		if(partialToken.Length < 3)
+		{
 			return false;
 		}
 
-		return GetBoundedLevenshteinDistance(nameToken, searchToken, maxDistance) <= maxDistance;
+		if(!fullToken.StartsWith(partialToken, StringComparison.Ordinal))
+		{
+			return false;
+		}
+
+		var missingLength = fullToken.Length - partialToken.Length;
+		if(missingLength < 0)
+		{
+			return false;
+		}
+
+		return missingLength <= ResolveAllowedNameSuffixOmission(fullToken, partialToken);
+	}
+
+	private static int ResolveAllowedNameSuffixOmission(string fullToken, string partialToken)
+	{
+		if(partialToken.Length >= 5)
+		{
+			return 4;
+		}
+
+		if(partialToken.Length >= 4)
+		{
+			return 3;
+		}
+
+		return 2;
 	}
 
 	private static int ResolveAllowedNameDistance(string left, string right)
@@ -1235,10 +1384,25 @@ public sealed class UserService : IUserService
 			return 0;
 		}
 
-		return minLength <= 8 ? 1 : 2;
+		if(minLength <= 4)
+		{
+			return 1;
+		}
+
+		if(minLength <= 7)
+		{
+			return 2;
+		}
+
+		if(minLength <= 12)
+		{
+			return 3;
+		}
+
+		return 3;
 	}
 
-	private static int GetBoundedLevenshteinDistance(string left, string right, int maxDistance)
+	private static int GetBoundedDamerauLevenshteinDistance(string left, string right, int maxDistance)
 	{
 		if(Math.Abs(left.Length - right.Length) > maxDistance)
 		{
@@ -1255,6 +1419,7 @@ public sealed class UserService : IUserService
 			return left.Length;
 		}
 
+		var previousPrevious = new int[right.Length + 1];
 		var previous = new int[right.Length + 1];
 		var current = new int[right.Length + 1];
 
@@ -1272,15 +1437,24 @@ public sealed class UserService : IUserService
 			{
 				var cost = left[i - 1] == right[j - 1] ? 0 : 1;
 
-				current[j] = Math.Min(
-					Math.Min(
-						current[j - 1] + 1,
-						previous[j] + 1),
-					previous[j - 1] + cost);
+				var value = Math.Min(
+ 					Math.Min(
+ 						current[j - 1] + 1,
+ 						previous[j] + 1),
+ 					previous[j - 1] + cost);
 
-				if(current[j] < rowMinimum)
+				if(i > 1
+				   && j > 1
+				   && left[i - 1] == right[j - 2]
+				   && left[i - 2] == right[j - 1])
 				{
-					rowMinimum = current[j];
+					value = Math.Min(value, previousPrevious[j - 2] + 1);
+				}
+
+				current[j] = value;
+				if(value < rowMinimum)
+				{
+					rowMinimum = value;
 				}
 			}
 
@@ -1289,10 +1463,11 @@ public sealed class UserService : IUserService
 				return maxDistance + 1;
 			}
 
-			(previous, current) = (current, previous);
+			(previousPrevious, previous, current) = (previous, current, previousPrevious);
 		}
 
-		return previous[right.Length];
+		var result = previous[right.Length];
+		return result <= maxDistance ? result : maxDistance + 1;
 	}
 
 	private static string BuildNormalizedUserFullName(UserPublicModel user)
@@ -1321,16 +1496,40 @@ public sealed class UserService : IUserService
 			return null;
 		}
 
-		var whitespace = new[] { ' ', '\t', '\r', '\n' };
+		var builder = new StringBuilder(value.Length);
+		var previousWasSeparator = true;
 
-		return string.Join(
-			' ',
-			value
-				.Trim()
-				.Replace('Ё', 'Е')
-				.Replace('ё', 'е')
-				.ToLowerInvariant()
-				.Split(whitespace, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+		foreach(var rawChar in value.Trim())
+		{
+			var ch = NormalizeUserSearchChar(rawChar);
+
+			if(char.IsLetterOrDigit(ch))
+			{
+				builder.Append(ch);
+				previousWasSeparator = false;
+				continue;
+			}
+
+			if(previousWasSeparator)
+			{
+				continue;
+			}
+
+			builder.Append(' ');
+			previousWasSeparator = true;
+		}
+
+		var normalized = builder.ToString().Trim();
+		return normalized.Length == 0 ? null : normalized;
+	}
+
+	private static char NormalizeUserSearchChar(char value)
+	{
+		return value switch
+		{
+			'Ё' or 'ё' => 'е',
+			_ => char.ToLowerInvariant(value),
+		};
 	}
 
 	private async Task<T> ExecuteReadAsync<T>(

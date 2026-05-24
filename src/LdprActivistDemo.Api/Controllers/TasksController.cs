@@ -117,6 +117,25 @@ public sealed class TasksController : ControllerBase
 		return includeExpiredDeadlines || !IsDeadlineExpired(t, nowUtc);
 	}
 
+	private static bool CanActorSeeClosedTask(
+		TaskModel task,
+		Guid actorUserId,
+		bool actorIsAdmin)
+	{
+		return !IsTaskClosed(task)
+			|| actorIsAdmin
+			|| task.AuthorUserId == actorUserId;
+	}
+
+	private static IEnumerable<TaskModel> ExcludeClosedTasks(IEnumerable<TaskModel> tasks)
+		=> tasks.Where(t => !IsTaskClosed(t));
+
+	private static IEnumerable<TaskModel> ApplyClosedTaskVisibilityFilter(
+		IEnumerable<TaskModel> tasks,
+		Guid actorUserId,
+		bool actorIsAdmin)
+		=> tasks.Where(t => CanActorSeeClosedTask(t, actorUserId, actorIsAdmin));
+
 	private static bool HasReusableTaskWithoutUserSubmissionPriority(
 		TaskModel t,
 		ISet<Guid> taskIdsWithAnyUserSubmission)
@@ -681,10 +700,15 @@ public sealed class TasksController : ControllerBase
 	/// <c>feedScope</c>, <c>regionName</c> и <c>settlementName</c> игнорируются:
 	/// сервер всегда строит исполнительскую ленту по географии этого пользователя и исключает
 	/// задачи, где он является автором или назначенным ответственным координатором.
+	/// Пользовательская лента всегда возвращает только открытые задачи; закрытые задачи из неё
+	/// исключаются независимо от query-параметров.
 	/// Если <c>userId</c> указывает на пользователя с ролью <c>coordinator</c> или <c>admin</c>,
 	/// сервер использует переданные параметры <c>feedScope</c>, <c>regionName</c> и <c>settlementName</c>
 	/// как обычные фильтры.
+	/// Для координаторской/админской ленты параметр <c>taskStatus</c> фильтрует задачи по статусу.
 	/// Пустой <c>taskStatus</c> означает отсутствие фильтрации по статусу задачи.
+	/// Закрытые задачи в координаторской/админской ленте возвращаются только фактическому автору задачи
+	/// или пользователю с ролью <c>admin</c>.
 	/// Параметр <c>submissionStatus</c> фильтрует задачи по заявкам пользователя <c>userId</c>:
 	/// либо по наличию хотя бы одной заявки с указанным статусом,
 	/// либо по специальному значению <c>none_submit</c>, которое оставляет только задачи без единой заявки пользователя.
@@ -703,7 +727,11 @@ public sealed class TasksController : ControllerBase
 	/// </param>
 	/// <param name="regionName">Опциональный фильтр по региону.</param>
 	/// <param name="settlementName">Опциональный фильтр по населённому пункту. Допустим только вместе с <c>regionName</c>.</param>
-	/// <param name="taskStatus">Опциональный фильтр по статусу задачи: <c>open</c> или <c>closed</c>.</param>
+	/// <param name="taskStatus">
+	/// Опциональный фильтр по статусу задачи: <c>open</c> или <c>closed</c>.
+	/// Используется только для ленты пользователя с ролью <c>coordinator</c> или <c>admin</c>.
+	/// Для пользовательской ленты <c>activist</c> закрытые задачи всегда исключаются, а параметр не влияет на результат.
+	/// </param>
 	/// <param name="submissionStatus">
 	/// Опциональный фильтр по статусу заявки пользователя к задаче:
 	/// <c>none_submit</c>, <c>in_progress</c>, <c>submitted_for_review</c>, <c>approve</c> или <c>rejected</c>.
@@ -780,7 +808,9 @@ public sealed class TasksController : ControllerBase
 			return MapTaskError(TaskOperationError.UserNotFound);
 		}
 
-		var actorHasCoordinatorAccess = UserRoleRules.HasCoordinatorAccess(actorAuth.Actor!.Role);
+		var actorRole = actorAuth.Actor!.Role;
+		var actorHasCoordinatorAccess = UserRoleRules.HasCoordinatorAccess(actorRole);
+		var actorIsAdmin = UserRoleRules.IsAdmin(actorRole);
 		var actorTargetAccessProblem = TryBuildTaskFeedActorTargetAccessProblem(
 			actorUserId,
 			actorHasCoordinatorAccess,
@@ -814,16 +844,20 @@ public sealed class TasksController : ControllerBase
 			}
 		}
 
-		if(!TryNormalizeTaskStatusFilter(taskStatus, out var normalizedTaskStatusFilter, out var taskStatusError))
+		string? normalizedTaskStatusFilter = null;
+		if(targetUserHasCoordinatorAccess)
 		{
-			return this.ValidationProblemWithCode(
-				ApiErrorCodes.ValidationFailed,
-				new Dictionary<string, string[]>
-				{
-					["taskStatus"] = new[] { taskStatusError! },
-				},
-				title: "Некорректный запрос.",
-				detail: "Параметр taskStatus допускает только значения 'open' или 'closed' (или пустое значение, чтобы не фильтровать).");
+			if(!TryNormalizeTaskStatusFilter(taskStatus, out normalizedTaskStatusFilter, out var taskStatusError))
+			{
+				return this.ValidationProblemWithCode(
+					ApiErrorCodes.ValidationFailed,
+					new Dictionary<string, string[]>
+					{
+						["taskStatus"] = new[] { taskStatusError! },
+					},
+					title: "Некорректный запрос.",
+					detail: "Параметр taskStatus допускает только значения 'open' или 'closed' (или пустое значение, чтобы не фильтровать).");
+			}
 		}
 
 		string? normalizedFeedScope = null;
@@ -869,6 +903,7 @@ public sealed class TasksController : ControllerBase
 
 			filteredTasks = availableForUserResult.Value
 				.Where(t => MatchesTaskFeedScope(t, userId, TaskFeedScopes.Executor))
+				.Where(t => !IsTaskClosed(t))
 				.ToList();
 		}
 		else
@@ -878,9 +913,14 @@ public sealed class TasksController : ControllerBase
 				.Where(t => MatchesTaskFeedScope(t, userId, normalizedFeedScope))
 				.ToList();
 			filteredTasks = ApplyRegionSettlementFilter(filteredTasks, regionName, settlementName).ToList();
+			filteredTasks = ApplyClosedTaskVisibilityFilter(
+					filteredTasks,
+					actorUserId,
+					actorIsAdmin)
+				.ToList();
 		}
 
-		if(normalizedTaskStatusFilter is not null)
+		if(targetUserHasCoordinatorAccess && normalizedTaskStatusFilter is not null)
 		{
 			filteredTasks = filteredTasks.Where(t => string.Equals(
 				NormalizeTaskStatusForContract(t),
